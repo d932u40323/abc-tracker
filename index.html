@@ -1824,6 +1824,9 @@ document.querySelectorAll('.modal-bg').forEach(bg=>{
 
 // ============ 多客戶管理 ============
 const CLIENTS_KEY = 'abc_clients_v1';
+const CLIENT_LIST_PATH = '_meta/clients.json'; // 在主資料倉庫存放客戶清單
+let clientListSha = null; // 用於 GitHub 寫入時的版本控制
+let clientListPushTimer = null;
 
 function loadClients(){
   try{
@@ -1904,9 +1907,13 @@ function addClientFromForm(){
   const path = document.getElementById('newClientPath').value.trim() || 'data/state.json';
   if(!name||!repo){ alert('請填寫客戶名稱與倉庫名稱'); return; }
   const list = loadClients();
-  // 檢查是否重複
+  // 檢查「倉庫 + 路徑」組合是否完全重複（允許同倉庫不同檔案路徑）
   for(const id in list.clients){
-    if(list.clients[id].repo === repo){ alert('此倉庫已有對應客戶：'+list.clients[id].name); return; }
+    const c = list.clients[id];
+    if(c.repo === repo && (c.path||'data/state.json') === path){
+      alert('此倉庫＋路徑組合已對應客戶：'+c.name+'\n\n如果想用同一個倉庫存多位客戶，請改成不同檔案路徑（例：data/'+name+'.json）');
+      return;
+    }
   }
   const id = 'c'+Date.now().toString(36);
   list.clients[id] = { name, repo, path };
@@ -1917,7 +1924,8 @@ function addClientFromForm(){
   document.getElementById('newClientPath').value='data/state.json';
   renderClientSelector();
   renderClientListInModal();
-  alert('已新增客戶「'+name+'」。\n如果這是新建立的倉庫，請記得到 GitHub Token 設定加入此倉庫的權限。');
+  schedulePushClientList(); // 跨裝置同步
+  alert('已新增客戶「'+name+'」。\n客戶清單會自動同步到 GitHub，其他裝置開啟時會看到。');
 }
 function deleteClient(id){
   const list = loadClients();
@@ -1935,6 +1943,7 @@ function deleteClient(id){
     renderClientSelector();
     renderClientListInModal();
   }
+  schedulePushClientList(); // 跨裝置同步
 }
 function updateClientField(id, field, value){
   const list = loadClients();
@@ -1951,6 +1960,7 @@ function updateClientField(id, field, value){
     saveGhCfg(cfg);
     ghLastSha = null;
   }
+  schedulePushClientList(); // 跨裝置同步
 }
 function openClientModal(){
   renderClientListInModal();
@@ -1982,6 +1992,118 @@ function renderClientListInModal(){
   });
   html += '</tbody></table>';
   div.innerHTML = html;
+}
+
+// ============ 客戶清單跨裝置同步 ============
+// 取得用於存放客戶清單的倉庫名稱（採用「第一個客戶」的倉庫，最常見的情境）
+function getClientListRepo(){
+  const list = loadClients();
+  const ids = Object.keys(list.clients);
+  if(ids.length>0) return list.clients[ids[0]].repo;
+  // 沒有客戶 → 用當前 GH cfg 的 repo
+  const cfg = loadGhCfg();
+  return cfg ? cfg.repo : null;
+}
+
+async function pullClientList(){
+  const cfg = loadGhCfg();
+  if(!cfg || !cfg.owner || !cfg.token) return;
+  const repo = getClientListRepo();
+  if(!repo) return;
+  try{
+    const url = `https://api.github.com/repos/${encodeURIComponent(cfg.owner)}/${encodeURIComponent(repo)}/contents/${CLIENT_LIST_PATH}`;
+    const res = await fetch(url, {
+      headers: {
+        'Authorization': 'Bearer ' + cfg.token,
+        'Accept': 'application/vnd.github+json',
+        'X-GitHub-Api-Version': '2022-11-28'
+      }
+    });
+    if(res.status === 404){
+      ghLog('遠端尚無客戶清單，將在第一次推送時建立');
+      clientListSha = null;
+      // 推送目前本機客戶清單作為初始版
+      schedulePushClientList();
+      return;
+    }
+    if(!res.ok) throw new Error('HTTP '+res.status);
+    const f = await res.json();
+    clientListSha = f.sha;
+    const remote = JSON.parse(b64ToUtf8(f.content));
+    const local = loadClients();
+    // 合併：以遠端 clients 為準（跨裝置同步），currentId 保留本地（每裝置可看不同客戶）
+    const merged = {
+      currentId: local.currentId && (remote.clients||{})[local.currentId] ? local.currentId : (Object.keys(remote.clients||{})[0] || null),
+      clients: remote.clients || local.clients
+    };
+    saveClientsList(merged);
+    renderClientSelector();
+    if(document.getElementById('modalClient').classList.contains('open')) renderClientListInModal();
+    ghLog('✓ 客戶清單已從遠端同步 ('+Object.keys(merged.clients||{}).length+' 位)');
+  }catch(e){
+    ghLog('⚠ 拉取客戶清單失敗：'+e.message);
+  }
+}
+
+async function pushClientList(){
+  const cfg = loadGhCfg();
+  if(!cfg || !cfg.owner || !cfg.token) return;
+  const repo = getClientListRepo();
+  if(!repo) return;
+  const list = loadClients();
+  try{
+    if(!clientListSha){
+      // 嘗試取得當前 sha（避免衝突）
+      try{
+        const url = `https://api.github.com/repos/${encodeURIComponent(cfg.owner)}/${encodeURIComponent(repo)}/contents/${CLIENT_LIST_PATH}`;
+        const r = await fetch(url, {
+          headers: { 'Authorization': 'Bearer '+cfg.token, 'Accept':'application/vnd.github+json' }
+        });
+        if(r.ok){ const d = await r.json(); clientListSha = d.sha; }
+      }catch(e){ /* ignore */ }
+    }
+    const body = {
+      message: `update clients ${new Date().toISOString()}`,
+      content: utf8ToB64(JSON.stringify({
+        clients: list.clients,
+        _ts: Date.now()
+      }, null, 2)),
+      branch: 'main'
+    };
+    if(clientListSha) body.sha = clientListSha;
+    const url = `https://api.github.com/repos/${encodeURIComponent(cfg.owner)}/${encodeURIComponent(repo)}/contents/${CLIENT_LIST_PATH}`;
+    const res = await fetch(url, {
+      method:'PUT',
+      headers:{
+        'Authorization':'Bearer '+cfg.token,
+        'Accept':'application/vnd.github+json',
+        'Content-Type':'application/json'
+      },
+      body: JSON.stringify(body)
+    });
+    if(!res.ok){
+      const txt = await res.text();
+      // sha 不符 → 重拉再推
+      if(res.status===409 || txt.includes('does not match')){
+        clientListSha = null;
+        await pullClientList();
+        return;
+      }
+      throw new Error('HTTP '+res.status+': '+txt.slice(0,150));
+    }
+    const result = await res.json();
+    clientListSha = result.content.sha;
+    ghLog('✓ 客戶清單已上傳 (sha '+clientListSha.slice(0,7)+')');
+  }catch(e){
+    ghLog('⚠ 推送客戶清單失敗：'+e.message);
+  }
+}
+
+function schedulePushClientList(){
+  const cfg = loadGhCfg();
+  if(!cfg || !cfg.autoSync) return;
+  clearTimeout(clientListPushTimer);
+  clientListPushTimer = setTimeout(pushClientList, 2000);
 }
 
 // ============ GitHub 私人倉庫同步 ============
@@ -2223,11 +2345,23 @@ setSyncStatus(window.FIREBASE_READY, window.FIREBASE_READY?'☁️ 雲端就緒'
 })();
 
 // 若已設定 GitHub，啟動時自動拉取最新 & 開啟輪詢
-(function initGithubSync(){
+(async function initGithubSync(){
   const cfg = loadGhCfg();
   if(!cfg) return;
   setGhStatus('ok','🐙 連線中...');
-  pullFromGithub().then(()=>{ if(cfg.autoSync) startGhPolling(); });
+  // 先拉客戶清單（跨裝置同步）
+  await pullClientList();
+  // 確保 GH cfg 的 repo/path 對應到最新的當前客戶
+  const cur = getCurrentClient();
+  if(cur){
+    cfg.repo = cur.repo;
+    cfg.path = cur.path || 'data/state.json';
+    saveGhCfg(cfg);
+    ghLastSha = null;
+  }
+  // 再拉當前客戶的資料
+  await pullFromGithub();
+  if(cfg.autoSync) startGhPolling();
 })();
 
 // 啟動時自動建立一份「開檔備份」（一天最多一次）
