@@ -49,6 +49,30 @@
   }
   header h1 { font-size:17px; margin:0; }
   header .tag { background:rgba(255,255,255,.18); padding:3px 8px; border-radius:4px; font-size:12px; }
+  header .client-switcher { display:flex; align-items:center; gap:6px; background:rgba(255,255,255,.15); padding:4px 10px; border-radius:8px; }
+  header .client-switcher label { font-size:12px; opacity:.85; }
+  header .client-switcher select {
+    padding:4px 8px; border:0; border-radius:5px; background:#fff; color:#2c5282;
+    font-size:13px; font-weight:600; min-width:140px; max-width:200px; cursor:pointer;
+  }
+  header .client-switcher .client-btn {
+    padding:4px 10px; border:0; border-radius:5px; background:#fbd38d; color:#7b341e;
+    cursor:pointer; font-size:12px; font-weight:600;
+  }
+  header .client-switcher .client-btn:hover { background:#f6ad55; }
+
+  /* 客戶管理 Modal 內的 client list */
+  .client-list { max-height:50vh; overflow-y:auto; margin:10px 0; }
+  table.client-tbl { width:100%; border-collapse:collapse; font-size:13px; }
+  table.client-tbl th, table.client-tbl td { padding:8px 10px; border-bottom:1px solid #e2e8f0; text-align:left; }
+  table.client-tbl th { background:#f7fafc; font-weight:600; color:#4a5568; font-size:12px; }
+  table.client-tbl tr.current { background:#fffbeb; }
+  table.client-tbl input { width:100%; padding:4px 6px; border:1px solid #cbd5e0; border-radius:4px; font-size:12px; }
+  table.client-tbl button { padding:4px 8px; border-radius:4px; cursor:pointer; font-size:11px; border:0; margin-right:3px; }
+  table.client-tbl button.use-btn { background:#48bb78; color:#fff; }
+  table.client-tbl button.use-btn:hover { background:#38a169; }
+  table.client-tbl button.del-btn { background:#fed7d7; color:#c53030; }
+  table.client-tbl button.del-btn:hover { background:#fc8181; color:#fff; }
   header .sync-status { font-size:12px; padding:4px 10px; border-radius:20px; background:rgba(255,255,255,.15); }
   header .sync-status.online { background:#48bb78; }
   header .toolbar { display:flex; gap:8px; flex-wrap:wrap; margin-left:auto; align-items:center; }
@@ -280,8 +304,12 @@
 </head>
 <body>
 <header>
-  <h1>📊 簡世華 ABC 帳戶</h1>
-  <span class="tag">版本 1150320</span>
+  <h1>📊 ABC 帳戶</h1>
+  <div class="client-switcher">
+    <label>客戶：</label>
+    <select id="clientSel" onchange="switchClient(this.value)"></select>
+    <button class="client-btn" onclick="openClientModal()" title="管理客戶清單">👥 客戶管理</button>
+  </div>
   <span class="sync-status" id="syncStatus">🟡 本機儲存</span>
   <div class="toolbar">
     <button onclick="undoLast()" title="撤銷最近一次操作（Ctrl+Z）">↶ 復原</button>
@@ -520,6 +548,55 @@
       <button onclick="clearFirebaseCfg()">清除設定</button>
       <button onclick="closeFirebaseModal()">取消</button>
       <button class="primary" onclick="saveFirebaseCfg()">儲存並連線</button>
+    </div>
+  </div>
+</div>
+
+<!-- Client Management Modal -->
+<div class="modal-bg" id="modalClient">
+  <div class="modal" style="max-width:780px;">
+    <h3>👥 客戶管理</h3>
+    <p style="font-size:13px;color:#4a5568;">每位客戶對應一個 GitHub 私人倉庫存放資料。切換客戶時自動上傳當前資料、再下載新客戶資料。</p>
+
+    <details style="margin-bottom:10px;">
+      <summary style="cursor:pointer;color:#3182ce;font-weight:600;">📘 新增客戶的步驟（點開展開）</summary>
+      <pre class="guide" style="white-space:pre-wrap;">
+1. 到 https://github.com/new 建立新的私人倉庫
+   名稱建議：abc-tracker-data-客戶名（例：abc-tracker-data-王小明）
+   勾選 Private、Add a README file
+2. 確保您的 Token 有訪問此新倉庫的權限：
+   到 https://github.com/settings/personal-access-tokens
+   點您現有的 token (abc-tracker) → 編輯 → Repository access
+   勾選新建立的倉庫 → Update
+3. 回到下方表單，按「＋ 新增客戶」填入：
+   客戶名稱（顯示用，例：王小明）
+   倉庫名稱（剛建立的，例：abc-tracker-data-王小明）
+   檔案路徑（保持預設 data/state.json）
+4. 按「儲存」即可
+5. 之後在頂端切換器下拉選單就能切換客戶</pre>
+    </details>
+
+    <div class="client-list" id="clientList"></div>
+
+    <h4 style="margin:14px 0 6px;font-size:14px;">＋ 新增客戶</h4>
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr auto;gap:8px;align-items:end;">
+      <div>
+        <label style="font-size:12px;color:#718096;">客戶名稱</label>
+        <input id="newClientName" type="text" placeholder="例：王小明" style="width:100%;padding:6px 10px;border:1px solid #cbd5e0;border-radius:5px;">
+      </div>
+      <div>
+        <label style="font-size:12px;color:#718096;">倉庫名稱</label>
+        <input id="newClientRepo" type="text" placeholder="例：abc-tracker-data-王小明" style="width:100%;padding:6px 10px;border:1px solid #cbd5e0;border-radius:5px;">
+      </div>
+      <div>
+        <label style="font-size:12px;color:#718096;">檔案路徑</label>
+        <input id="newClientPath" type="text" value="data/state.json" style="width:100%;padding:6px 10px;border:1px solid #cbd5e0;border-radius:5px;">
+      </div>
+      <button class="primary" style="background:#3182ce;color:#fff;border:0;padding:8px 14px;border-radius:5px;cursor:pointer;font-weight:600;" onclick="addClientFromForm()">＋ 新增</button>
+    </div>
+
+    <div class="actions">
+      <button onclick="closeClientModal()">關閉</button>
     </div>
   </div>
 </div>
@@ -1745,6 +1822,168 @@ document.querySelectorAll('.modal-bg').forEach(bg=>{
   bg.addEventListener('click',e=>{ if(e.target===bg) bg.classList.remove('open'); });
 });
 
+// ============ 多客戶管理 ============
+const CLIENTS_KEY = 'abc_clients_v1';
+
+function loadClients(){
+  try{
+    const s = localStorage.getItem(CLIENTS_KEY);
+    if(s){ const obj = JSON.parse(s); if(obj && obj.clients) return obj; }
+  }catch(e){}
+  // 第一次使用 → 從現有 GH 設定遷移成「客戶 1」
+  const cfg = loadGhCfg();
+  if(cfg && cfg.repo){
+    const list = {
+      currentId: 'c001',
+      clients: {
+        'c001': { name:'簡世華', repo:cfg.repo, path:cfg.path||'data/state.json' }
+      }
+    };
+    saveClientsList(list);
+    return list;
+  }
+  return { currentId: null, clients: {} };
+}
+function saveClientsList(list){
+  localStorage.setItem(CLIENTS_KEY, JSON.stringify(list));
+}
+function getCurrentClient(){
+  const list = loadClients();
+  return list.currentId ? list.clients[list.currentId] : null;
+}
+function renderClientSelector(){
+  const sel = document.getElementById('clientSel');
+  if(!sel) return;
+  const list = loadClients();
+  const ids = Object.keys(list.clients);
+  if(ids.length===0){
+    sel.innerHTML = '<option value="">（尚未新增）</option>';
+    return;
+  }
+  sel.innerHTML = ids.map(id=>{
+    const c = list.clients[id];
+    return `<option value="${id}" ${id===list.currentId?'selected':''}>${c.name||id}</option>`;
+  }).join('');
+}
+
+async function switchClient(id){
+  const list = loadClients();
+  if(!list.clients[id]) return;
+  if(id === list.currentId){ return; }
+  // 先把當前資料推到當前客戶的倉庫
+  const curClient = list.clients[list.currentId];
+  if(curClient){
+    try{ await pushToGithub(true); ghLog('✓ 切換前已將「'+curClient.name+'」資料上傳'); }catch(e){ ghLog('⚠ 切換前推送失敗：'+e.message); }
+  }
+  // 更新 currentId 與 GH cfg
+  list.currentId = id;
+  saveClientsList(list);
+  const newClient = list.clients[id];
+  const cfg = loadGhCfg() || {};
+  cfg.repo = newClient.repo;
+  cfg.path = newClient.path || 'data/state.json';
+  saveGhCfg(cfg);
+  ghLastSha = null;
+  // 拉新客戶資料
+  try{
+    await pullFromGithub();
+  }catch(e){
+    // 若 404，初始化空白
+    state = mergeWithInitial(JSON.parse(JSON.stringify(INITIAL)));
+    renderAll();
+    ghLog('⚠ 新客戶 '+newClient.name+' 倉庫尚無資料，使用空白範本');
+  }
+  renderClientSelector();
+  document.title = `📊 ${newClient.name} - ABC 帳戶管理`;
+  setSyncStatus(window.FIREBASE_READY||true, '✓ 已切換到 '+newClient.name);
+}
+
+function addClientFromForm(){
+  const name = document.getElementById('newClientName').value.trim();
+  const repo = document.getElementById('newClientRepo').value.trim();
+  const path = document.getElementById('newClientPath').value.trim() || 'data/state.json';
+  if(!name||!repo){ alert('請填寫客戶名稱與倉庫名稱'); return; }
+  const list = loadClients();
+  // 檢查是否重複
+  for(const id in list.clients){
+    if(list.clients[id].repo === repo){ alert('此倉庫已有對應客戶：'+list.clients[id].name); return; }
+  }
+  const id = 'c'+Date.now().toString(36);
+  list.clients[id] = { name, repo, path };
+  if(!list.currentId) list.currentId = id;
+  saveClientsList(list);
+  document.getElementById('newClientName').value='';
+  document.getElementById('newClientRepo').value='';
+  document.getElementById('newClientPath').value='data/state.json';
+  renderClientSelector();
+  renderClientListInModal();
+  alert('已新增客戶「'+name+'」。\n如果這是新建立的倉庫，請記得到 GitHub Token 設定加入此倉庫的權限。');
+}
+function deleteClient(id){
+  const list = loadClients();
+  const c = list.clients[id];
+  if(!c) return;
+  if(Object.keys(list.clients).length<=1){ alert('至少要保留一個客戶'); return; }
+  if(!confirm('刪除客戶「'+c.name+'」？\n（只會從清單移除，GitHub 倉庫的資料不會被刪）')) return;
+  delete list.clients[id];
+  if(list.currentId===id){
+    list.currentId = Object.keys(list.clients)[0];
+    saveClientsList(list);
+    switchClient(list.currentId);
+  } else {
+    saveClientsList(list);
+    renderClientSelector();
+    renderClientListInModal();
+  }
+}
+function updateClientField(id, field, value){
+  const list = loadClients();
+  if(!list.clients[id]) return;
+  list.clients[id][field] = value;
+  saveClientsList(list);
+  renderClientSelector();
+  if(id===list.currentId){
+    document.title = `📊 ${list.clients[id].name} - ABC 帳戶管理`;
+    // 若改了 repo/path 也要更新 GH cfg
+    const cfg = loadGhCfg() || {};
+    cfg.repo = list.clients[id].repo;
+    cfg.path = list.clients[id].path;
+    saveGhCfg(cfg);
+    ghLastSha = null;
+  }
+}
+function openClientModal(){
+  renderClientListInModal();
+  document.getElementById('modalClient').classList.add('open');
+}
+function closeClientModal(){ document.getElementById('modalClient').classList.remove('open'); }
+function renderClientListInModal(){
+  const list = loadClients();
+  const ids = Object.keys(list.clients);
+  const div = document.getElementById('clientList');
+  if(ids.length===0){
+    div.innerHTML = '<p style="color:#a0aec0;text-align:center;padding:14px;">尚無客戶，請從下方新增</p>';
+    return;
+  }
+  let html = '<table class="client-tbl"><thead><tr><th style="width:30px;"></th><th>客戶名稱</th><th>GitHub 倉庫</th><th>檔案路徑</th><th style="width:140px;">操作</th></tr></thead><tbody>';
+  ids.forEach(id=>{
+    const c = list.clients[id];
+    const cur = id===list.currentId;
+    html += `<tr class="${cur?'current':''}">
+      <td>${cur?'⭐':''}</td>
+      <td><input value="${(c.name||'').replace(/"/g,'&quot;')}" oninput="updateClientField('${id}','name',this.value)"></td>
+      <td><input value="${(c.repo||'').replace(/"/g,'&quot;')}" oninput="updateClientField('${id}','repo',this.value)"></td>
+      <td><input value="${(c.path||'').replace(/"/g,'&quot;')}" oninput="updateClientField('${id}','path',this.value)"></td>
+      <td>
+        ${cur?'<span style="color:#718096;font-size:11px;">使用中</span>':`<button class="use-btn" onclick="switchClient('${id}');closeClientModal();">切換</button>`}
+        <button class="del-btn" onclick="deleteClient('${id}')">✕</button>
+      </td>
+    </tr>`;
+  });
+  html += '</tbody></table>';
+  div.innerHTML = html;
+}
+
 // ============ GitHub 私人倉庫同步 ============
 const GH_CFG_KEY = 'github_sync_cfg_v1';
 let ghLastSha = null;
@@ -1974,6 +2213,14 @@ function clearGithubCfg(){
 renderAll();
 saveState(true); // 初始化不寫雲端
 setSyncStatus(window.FIREBASE_READY, window.FIREBASE_READY?'☁️ 雲端就緒':'💾 本機儲存（未啟用雲端）');
+
+// 多客戶初始化：載入客戶清單並渲染切換器
+(function initClients(){
+  loadClients(); // 觸發遷移
+  renderClientSelector();
+  const cur = getCurrentClient();
+  if(cur) document.title = `📊 ${cur.name} - ABC 帳戶管理`;
+})();
 
 // 若已設定 GitHub，啟動時自動拉取最新 & 開啟輪詢
 (function initGithubSync(){
