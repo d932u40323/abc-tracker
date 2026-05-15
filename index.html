@@ -274,6 +274,59 @@
   table.history td.avg-col { background:#e6fffa; font-weight:700; }
   table.history tfoot td { background:#edf2f7; font-weight:700; color:#2c5282; }
 
+  /* 備註欄 */
+  .notes-box { margin-top:18px; background:#fffbeb; border:1px solid #fbd38d; border-radius:8px; padding:12px; }
+  .notes-box h3 { margin:0 0 8px; font-size:14px; color:#7b341e; display:flex; align-items:center; gap:6px; }
+  .notes-box textarea {
+    width:100%; min-height:120px; padding:8px 10px; border:1px solid #e2e8f0; border-radius:6px;
+    font-family:inherit; font-size:13px; line-height:1.6; resize:vertical;
+  }
+  .notes-box textarea:focus { outline:1px solid #f6ad55; background:#fff; }
+
+  /* Toast 通知（右下角自動消失） */
+  .toast-container {
+    position:fixed; bottom:24px; right:24px; z-index:300;
+    display:flex; flex-direction:column; gap:8px; pointer-events:none;
+  }
+  .toast {
+    background:#2d3748; color:#fff; padding:10px 16px; border-radius:8px;
+    font-size:13px; box-shadow:0 4px 12px rgba(0,0,0,.2);
+    animation:toast-in .25s ease-out, toast-out .3s ease-in 2.5s forwards;
+    max-width:340px; pointer-events:auto;
+  }
+  .toast.success { background:#38a169; }
+  .toast.warn { background:#dd6b20; }
+  .toast.error { background:#c53030; }
+  @keyframes toast-in { from{opacity:0;transform:translateY(20px);} to{opacity:1;transform:translateY(0);} }
+  @keyframes toast-out { to{opacity:0;transform:translateY(-10px);} }
+
+  /* 警示橫條 */
+  .alert-banner {
+    background:linear-gradient(135deg,#c53030,#e53e3e); color:#fff;
+    padding:10px 18px; border-radius:8px; margin-bottom:14px;
+    display:none; align-items:center; gap:10px; font-size:14px;
+    box-shadow:0 2px 6px rgba(197,48,48,.3);
+  }
+  .alert-banner.show { display:flex; }
+  .alert-banner .alert-icon { font-size:20px; }
+  .alert-banner .alert-content { flex:1; }
+  .alert-banner .alert-content strong { font-weight:700; }
+  .alert-banner .close-btn { background:rgba(255,255,255,.2); border:0; color:#fff; padding:4px 10px; border-radius:4px; cursor:pointer; font-size:12px; }
+  .alert-banner .close-btn:hover { background:rgba(255,255,255,.3); }
+
+  /* 支付方式 select */
+  table.tracker select.payment {
+    width:80px; padding:3px 4px; border:0; background:transparent; font-size:12px;
+    border-radius:4px; cursor:pointer;
+  }
+  table.tracker select.payment:focus { background:#fffbeb; outline:1px solid #f6ad55; }
+  .payment-summary { display:flex; gap:14px; flex-wrap:wrap; padding:10px; background:#f7fafc; border-radius:6px; margin-top:10px; }
+  .payment-summary .pay-pill { display:flex; align-items:center; gap:4px; font-size:12px; padding:4px 10px; border-radius:14px; }
+  .payment-summary .pay-pill.cc { background:#bee3f8; color:#2c5282; }
+  .payment-summary .pay-pill.cash { background:#c6f6d5; color:#22543d; }
+  .payment-summary .pay-pill.tx { background:#fef5e7; color:#7b341e; }
+  .payment-summary .pay-pill.other { background:#e9d8fd; color:#553c9a; }
+
   .chart-grid { display:grid; grid-template-columns:1fr 1fr; gap:14px; }
   @media (max-width:900px){ .chart-grid { grid-template-columns:1fr; } }
   .chart-box { background:#fff; padding:14px; border-radius:10px; box-shadow:0 1px 3px rgba(0,0,0,.06); }
@@ -331,6 +384,13 @@
 </nav>
 
 <main>
+  <!-- 警示橫條（任一分頁都顯示在最上面） -->
+  <div class="alert-banner" id="alertBanner">
+    <span class="alert-icon">⚠️</span>
+    <div class="alert-content" id="alertContent"></div>
+    <button class="close-btn" onclick="dismissAlert()">關閉</button>
+  </div>
+
   <!-- 即時花費追蹤 -->
   <section id="panel-tracker" class="panel active">
     <div class="card">
@@ -416,6 +476,7 @@
             <th class="num">已花費</th>
             <th class="num">剩餘</th>
             <th>使用率</th>
+            <th>支付方式</th>
             <th></th>
           </tr>
         </thead>
@@ -428,11 +489,13 @@
             <td class="num" id="footA_left">0</td>
             <td></td>
             <td></td>
+            <td></td>
           </tr>
         </tfoot>
       </table>
       </div>
       <button class="add-row" onclick="addRow('a')">+ 新增 A 項目</button>
+      <div class="payment-summary" id="paySumA"></div>
       </div>
 
       <!-- B 帳戶 -->
@@ -446,6 +509,7 @@
             <th class="num">已花費</th>
             <th class="num">剩餘</th>
             <th>使用率</th>
+            <th>支付方式</th>
             <th></th>
           </tr>
         </thead>
@@ -458,11 +522,13 @@
             <td class="num" id="footB_left">0</td>
             <td></td>
             <td></td>
+            <td></td>
           </tr>
         </tfoot>
       </table>
       </div>
       <button class="add-row" onclick="addRow('b')">+ 新增 B 項目</button>
+      <div class="payment-summary" id="paySumB"></div>
       </div>
 
       <!-- C 帳戶 -->
@@ -495,6 +561,14 @@
       <button class="add-row" onclick="addRow('c')">+ 新增 C 項目</button>
       </div>
     </div>
+
+    <!-- 備註欄 -->
+    <div class="card">
+      <div class="notes-box">
+        <h3>📝 即時花費追蹤 備註</h3>
+        <textarea id="notes_tracker" placeholder="輸入這頁的備註、提醒事項、特殊狀況說明等..." oninput="onNoteChange('tracker', this.value)"></textarea>
+      </div>
+    </div>
   </section>
 
   <!-- 圖表 -->
@@ -507,6 +581,25 @@
       <div class="chart-box"><h3>C 帳戶 資產配置</h3><canvas id="chartC"></canvas></div>
       <div class="chart-box"><h3>每月結餘趨勢（依目前花費推估）</h3><canvas id="chartBalance"></canvas></div>
     </div>
+
+    <!-- 單項目跨月趨勢 -->
+    <div class="card">
+      <h2>單項目跨月趨勢</h2>
+      <div style="display:flex; gap:10px; align-items:center; margin-bottom:10px; flex-wrap:wrap;">
+        <label>選擇項目：</label>
+        <select id="trendItemSel" onchange="renderItemTrend()" style="padding:6px 12px; border:1px solid #cbd5e0; border-radius:6px; font-size:13px;"></select>
+      </div>
+      <canvas id="chartItemTrend" style="max-height:300px;"></canvas>
+      <p class="sub" style="margin-top:8px;font-size:12px;">資料來自所有歷史月份。若項目在某月不存在，視為 0。</p>
+    </div>
+
+    <!-- 備註欄 -->
+    <div class="card">
+      <div class="notes-box">
+        <h3>📝 圖表分析 備註</h3>
+        <textarea id="notes_charts" placeholder="記錄這頁的觀察、趨勢分析、決策依據..." oninput="onNoteChange('charts', this.value)"></textarea>
+      </div>
+    </div>
   </section>
 
   <!-- 列印總覽 -->
@@ -516,8 +609,19 @@
       <p class="sub">本頁面已套用列印樣式，請按右上「🖨️ 列印 / PDF」。</p>
       <div id="summaryContent"></div>
     </div>
+
+    <!-- 備註欄 -->
+    <div class="card">
+      <div class="notes-box">
+        <h3>📝 列印總覽 備註（會印在 PDF 上）</h3>
+        <textarea id="notes_summary" placeholder="這裡的備註內容會出現在列印的 PDF 上，例如客戶說明、會議結論、特殊提醒..." oninput="onNoteChange('summary', this.value)"></textarea>
+      </div>
+    </div>
   </section>
 </main>
+
+<!-- Toast 通知容器 -->
+<div class="toast-container" id="toastContainer"></div>
 
 <!-- Firebase 設定 Modal -->
 <div class="modal-bg" id="modalFirebase">
@@ -594,6 +698,14 @@
       </div>
       <button class="primary" style="background:#3182ce;color:#fff;border:0;padding:8px 14px;border-radius:5px;cursor:pointer;font-weight:600;" onclick="addClientFromForm()">＋ 新增</button>
     </div>
+
+    <h4 style="margin:14px 0 6px;font-size:14px;">📦 項目模板</h4>
+    <p class="sub" style="font-size:12px;">把目前客戶的 A/B 項目組合存為模板，新增客戶後可一鍵套用，省去重打項目名稱與預算的時間。</p>
+    <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center; margin-bottom:6px;">
+      <input id="newTplName" type="text" placeholder="模板名稱（例：標準家庭預算）" style="flex:1; min-width:200px; padding:6px 10px; border:1px solid #cbd5e0; border-radius:5px;">
+      <button style="background:#48bb78;color:#fff;border:0;padding:7px 14px;border-radius:5px;cursor:pointer;font-weight:600;" onclick="saveCurrentAsTemplate()">💾 把目前 A+B 項目存為模板</button>
+    </div>
+    <div id="tplList" style="margin-top:8px;"></div>
 
     <div class="actions">
       <button onclick="closeClientModal()">關閉</button>
@@ -880,7 +992,11 @@ function renderAll(){
   renderAssetTbl('c','tblC');
   renderSummary();
   renderHistoryStats();
-  if(document.getElementById('panel-charts').classList.contains('active')) renderCharts();
+  renderNotes();
+  alertDismissed = false;
+  checkBudgetAlert();
+  refreshTrendItemSel();
+  if(document.getElementById('panel-charts').classList.contains('active')){ renderCharts(); renderItemTrend(); }
   if(document.getElementById('panel-summary').classList.contains('active')) renderPrintSummary();
 }
 
@@ -903,6 +1019,7 @@ function renderBudgetTbl(key, tblId){
     tr.draggable = true;
     tr.dataset.idx = idx;
     tr.dataset.k = key;
+    const payment = it.payment || '';
     tr.innerHTML = `
       <td class="name">
         <span class="drag-handle" title="拖曳調整順序">⋮⋮</span>
@@ -916,6 +1033,15 @@ function renderBudgetTbl(key, tblId){
       <td>
         <span class="progress"><span class="progress-bar ${cls}" style="width:${Math.min(pct,100)}%"></span></span>
         <span class="progress-text">${pct}%</span>
+      </td>
+      <td>
+        <select class="payment" data-k="${key}" data-i="${idx}" data-f="payment">
+          <option value="" ${payment===''?'selected':''}>—</option>
+          <option value="信用卡" ${payment==='信用卡'?'selected':''}>信用卡</option>
+          <option value="現金" ${payment==='現金'?'selected':''}>現金</option>
+          <option value="轉帳" ${payment==='轉帳'?'selected':''}>轉帳</option>
+          <option value="其他" ${payment==='其他'?'selected':''}>其他</option>
+        </select>
       </td>
       <td>
         <div class="row-actions">
@@ -957,6 +1083,25 @@ function renderBudgetTbl(key, tblId){
   // 子分頁 chip 只有目前 active 帳戶會顯示
   updateSubChip();
   enableDragSort(tblId);
+  renderPaymentSummary(key);
+}
+
+function renderPaymentSummary(key){
+  const el = document.getElementById('paySum'+key.toUpperCase());
+  if(!el) return;
+  const items = state[key];
+  const sums = {'信用卡':0,'現金':0,'轉帳':0,'其他':0,'未指定':0};
+  items.forEach(it=>{
+    const p = it.payment || '未指定';
+    sums[p] = (sums[p]||0) + (+it.budget||0);
+  });
+  const labels = {'信用卡':'cc','現金':'cash','轉帳':'tx','其他':'other','未指定':''};
+  el.innerHTML = '<span style="font-size:12px;color:#718096;font-weight:600;">支付方式（依預算）：</span>'
+    + Object.keys(sums).map(p=>{
+        if(sums[p]===0) return '';
+        const cls = labels[p]||'';
+        return `<span class="pay-pill ${cls}">${p === '未指定' ? '⚠️ 未指定' : p}：$${fmt(sums[p])}</span>`;
+      }).join('');
 }
 
 function updateSubChip(){
@@ -1723,6 +1868,14 @@ function renderPrintSummary(){
       </tbody>
     </table>
   `;
+  // 加入備註內容到列印版
+  const noteSummary = (state.notes && state.notes.summary)||'';
+  const noteTracker = (state.notes && state.notes.tracker)||'';
+  if(noteSummary || noteTracker){
+    html += '<h3 style="margin-top:18px;">備註</h3>';
+    if(noteSummary) html += '<div style="background:#fffbeb;border:1px solid #fbd38d;padding:10px;border-radius:6px;margin-bottom:8px;white-space:pre-wrap;font-size:12px;">'+noteSummary.replace(/</g,'&lt;')+'</div>';
+    if(noteTracker) html += '<div style="background:#f7fafc;border:1px solid #e2e8f0;padding:10px;border-radius:6px;white-space:pre-wrap;font-size:12px;"><b>追蹤頁備註：</b><br>'+noteTracker.replace(/</g,'&lt;')+'</div>';
+  }
   document.getElementById('summaryContent').innerHTML = html;
 }
 
@@ -1822,6 +1975,56 @@ document.querySelectorAll('.modal-bg').forEach(bg=>{
   bg.addEventListener('click',e=>{ if(e.target===bg) bg.classList.remove('open'); });
 });
 
+// ============ Toast 通知系統 ============
+function toast(msg, type){
+  const c = document.getElementById('toastContainer');
+  if(!c) return;
+  const t = document.createElement('div');
+  t.className = 'toast ' + (type||'');
+  t.textContent = msg;
+  c.appendChild(t);
+  setTimeout(()=>{ t.remove(); }, 3000);
+}
+
+// ============ 備註欄 ============
+function onNoteChange(key, val){
+  if(!state.notes) state.notes = {};
+  state.notes[key] = val;
+  saveState();
+}
+function renderNotes(){
+  if(!state.notes) state.notes = {};
+  ['tracker','charts','summary'].forEach(k=>{
+    const ta = document.getElementById('notes_'+k);
+    if(ta) ta.value = state.notes[k] || '';
+  });
+}
+
+// ============ 預算警示 ============
+let alertDismissed = false;
+function checkBudgetAlert(){
+  if(alertDismissed) return;
+  const warns = [];
+  state.a.forEach(it=>{
+    const b = +it.budget||0; const s = effSpent(it);
+    if(b>0 && s/b>=0.9) warns.push({k:'A', name:it.name, pct:Math.round(s/b*100)});
+  });
+  state.b.forEach(it=>{
+    const b = +it.budget||0; const s = effSpent(it);
+    if(b>0 && s/b>=0.9) warns.push({k:'B', name:it.name, pct:Math.round(s/b*100)});
+  });
+  const banner = document.getElementById('alertBanner');
+  const content = document.getElementById('alertContent');
+  if(warns.length===0){ banner.classList.remove('show'); return; }
+  const txt = warns.map(w=>`${w.k}.${w.name} (${w.pct}%)`).join('、');
+  content.innerHTML = `<strong>有 ${warns.length} 項目接近或超過預算</strong>：${txt}`;
+  banner.classList.add('show');
+}
+function dismissAlert(){
+  alertDismissed = true;
+  document.getElementById('alertBanner').classList.remove('show');
+}
+
 // ============ 多客戶管理 ============
 const CLIENTS_KEY = 'abc_clients_v1';
 const CLIENT_LIST_PATH = '_meta/clients.json'; // 在主資料倉庫存放客戶清單
@@ -1899,6 +2102,7 @@ async function switchClient(id){
   renderClientSelector();
   document.title = `📊 ${newClient.name} - ABC 帳戶管理`;
   setSyncStatus(window.FIREBASE_READY||true, '✓ 已切換到 '+newClient.name);
+  toast('已切換到客戶「'+newClient.name+'」','success');
 }
 
 function addClientFromForm(){
@@ -1925,7 +2129,7 @@ function addClientFromForm(){
   renderClientSelector();
   renderClientListInModal();
   schedulePushClientList(); // 跨裝置同步
-  alert('已新增客戶「'+name+'」。\n客戶清單會自動同步到 GitHub，其他裝置開啟時會看到。');
+  toast('已新增客戶「'+name+'」，自動同步到 GitHub','success');
 }
 function deleteClient(id){
   const list = loadClients();
@@ -1964,6 +2168,7 @@ function updateClientField(id, field, value){
 }
 function openClientModal(){
   renderClientListInModal();
+  renderTemplateList();
   document.getElementById('modalClient').classList.add('open');
 }
 function closeClientModal(){ document.getElementById('modalClient').classList.remove('open'); }
@@ -1992,6 +2197,165 @@ function renderClientListInModal(){
   });
   html += '</tbody></table>';
   div.innerHTML = html;
+}
+
+// ============ 項目模板系統 ============
+const TEMPLATES_KEY = 'abc_templates_v1';
+const TEMPLATE_PATH = '_meta/templates.json';
+let tplSha = null;
+let tplPushTimer = null;
+
+function loadTemplates(){
+  try{ return JSON.parse(localStorage.getItem(TEMPLATES_KEY)||'{}'); }catch(e){ return {}; }
+}
+function saveTemplatesLocal(obj){ localStorage.setItem(TEMPLATES_KEY, JSON.stringify(obj)); }
+
+function saveCurrentAsTemplate(){
+  const name = document.getElementById('newTplName').value.trim();
+  if(!name){ toast('請輸入模板名稱','warn'); return; }
+  const tpls = loadTemplates();
+  tpls[name] = {
+    a: state.a.map(it=>({name:it.name, budget:+it.budget||0, payment:it.payment||''})),
+    b: state.b.map(it=>({name:it.name, budget:+it.budget||0, payment:it.payment||''})),
+    _ts: Date.now()
+  };
+  saveTemplatesLocal(tpls);
+  document.getElementById('newTplName').value='';
+  renderTemplateList();
+  schedulePushTemplates();
+  toast('模板「'+name+'」已儲存','success');
+}
+function applyTemplate(name){
+  const tpls = loadTemplates();
+  if(!tpls[name]) return;
+  if(!confirm('套用模板「'+name+'」？\n\n會用模板的項目「取代」目前 A 與 B 帳戶的所有項目（已花費歸零）。\n\n建議只在剛新增、空白的客戶上使用。')) return;
+  pushUndo(); createBackup('套用模板前');
+  state.a = tpls[name].a.map(x=>({name:x.name, budget:x.budget, spent:0, details:[], payment:x.payment||''}));
+  state.b = tpls[name].b.map(x=>({name:x.name, budget:x.budget, spent:0, details:[], payment:x.payment||''}));
+  renderAll(); saveState();
+  toast('已套用模板「'+name+'」','success');
+}
+function deleteTemplate(name){
+  if(!confirm('刪除模板「'+name+'」？')) return;
+  const tpls = loadTemplates();
+  delete tpls[name];
+  saveTemplatesLocal(tpls);
+  renderTemplateList();
+  schedulePushTemplates();
+}
+function renderTemplateList(){
+  const div = document.getElementById('tplList');
+  if(!div) return;
+  const tpls = loadTemplates();
+  const names = Object.keys(tpls);
+  if(names.length===0){
+    div.innerHTML = '<p style="color:#a0aec0;font-size:12px;text-align:center;padding:8px;">尚無模板</p>';
+    return;
+  }
+  let html = '<table class="client-tbl"><thead><tr><th>模板名稱</th><th>A 項目數</th><th>B 項目數</th><th style="width:160px;">操作</th></tr></thead><tbody>';
+  names.forEach(n=>{
+    const t = tpls[n];
+    html += `<tr>
+      <td>${n}</td>
+      <td>${(t.a||[]).length}</td>
+      <td>${(t.b||[]).length}</td>
+      <td>
+        <button class="use-btn" onclick="applyTemplate('${n.replace(/'/g,"\\'")}')">📥 套用到目前客戶</button>
+        <button class="del-btn" onclick="deleteTemplate('${n.replace(/'/g,"\\'")}')">✕</button>
+      </td>
+    </tr>`;
+  });
+  html += '</tbody></table>';
+  div.innerHTML = html;
+}
+
+async function pullTemplates(){
+  const cfg = loadGhCfg();
+  if(!cfg || !cfg.owner || !cfg.token) return;
+  const repo = getClientListRepo(); if(!repo) return;
+  try{
+    const url = `https://api.github.com/repos/${encodeURIComponent(cfg.owner)}/${encodeURIComponent(repo)}/contents/${TEMPLATE_PATH}`;
+    const res = await fetch(url, { headers:{'Authorization':'Bearer '+cfg.token, 'Accept':'application/vnd.github+json'} });
+    if(res.status===404){ tplSha=null; return; }
+    if(!res.ok) return;
+    const f = await res.json();
+    tplSha = f.sha;
+    const remote = JSON.parse(b64ToUtf8(f.content));
+    saveTemplatesLocal(remote.templates||{});
+    renderTemplateList();
+  }catch(e){}
+}
+async function pushTemplates(){
+  const cfg = loadGhCfg();
+  if(!cfg || !cfg.owner || !cfg.token) return;
+  const repo = getClientListRepo(); if(!repo) return;
+  const tpls = loadTemplates();
+  try{
+    if(!tplSha){
+      try{
+        const r = await fetch(`https://api.github.com/repos/${encodeURIComponent(cfg.owner)}/${encodeURIComponent(repo)}/contents/${TEMPLATE_PATH}`, { headers:{'Authorization':'Bearer '+cfg.token, 'Accept':'application/vnd.github+json'} });
+        if(r.ok){ const d = await r.json(); tplSha = d.sha; }
+      }catch(e){}
+    }
+    const body = {
+      message: `update templates ${new Date().toISOString()}`,
+      content: utf8ToB64(JSON.stringify({templates:tpls,_ts:Date.now()}, null, 2)),
+      branch:'main'
+    };
+    if(tplSha) body.sha = tplSha;
+    const res = await fetch(`https://api.github.com/repos/${encodeURIComponent(cfg.owner)}/${encodeURIComponent(repo)}/contents/${TEMPLATE_PATH}`, {
+      method:'PUT',
+      headers:{'Authorization':'Bearer '+cfg.token, 'Accept':'application/vnd.github+json', 'Content-Type':'application/json'},
+      body: JSON.stringify(body)
+    });
+    if(res.ok){ const r = await res.json(); tplSha = r.content.sha; }
+  }catch(e){}
+}
+function schedulePushTemplates(){
+  const cfg = loadGhCfg();
+  if(!cfg || !cfg.autoSync) return;
+  clearTimeout(tplPushTimer);
+  tplPushTimer = setTimeout(pushTemplates, 2000);
+}
+
+// ============ 單項目跨月趨勢圖 ============
+let chartItemTrend = null;
+function refreshTrendItemSel(){
+  const sel = document.getElementById('trendItemSel');
+  if(!sel) return;
+  const items = [...state.a.map(x=>({k:'A',name:x.name})), ...state.b.map(x=>({k:'B',name:x.name}))]
+    .filter(x=>x.name);
+  const cur = sel.value;
+  sel.innerHTML = items.map(x=>`<option value="${x.k}|${x.name}">${x.k}.${x.name}</option>`).join('');
+  if(cur && items.some(x=>x.k+'|'+x.name===cur)) sel.value = cur;
+}
+function renderItemTrend(){
+  refreshTrendItemSel();
+  const sel = document.getElementById('trendItemSel');
+  if(!sel || !sel.value) return;
+  const [k, ...nameParts] = sel.value.split('|');
+  const name = nameParts.join('|');
+  const months = Object.keys(state.months||{}).sort();
+  const data = months.map(m=>{
+    const md = state.months[m];
+    const arr = (md[k.toLowerCase()]||[]);
+    const it = arr.find(x=>x.name===name);
+    return it ? effSpent(it) : 0;
+  });
+  const budgets = months.map(m=>{
+    const md = state.months[m];
+    const arr = (md[k.toLowerCase()]||[]);
+    const it = arr.find(x=>x.name===name);
+    return it ? (+it.budget||0) : 0;
+  });
+  if(chartItemTrend) chartItemTrend.destroy();
+  chartItemTrend = new Chart(document.getElementById('chartItemTrend'),{
+    type:'line', data:{labels:months, datasets:[
+      {label:'已花費',data:data,borderColor:'#dd6b20',backgroundColor:'rgba(221,107,32,.15)',tension:.3,fill:true,borderWidth:2},
+      {label:'預算',data:budgets,borderColor:'#3182ce',borderDash:[5,5],fill:false,borderWidth:2}
+    ]},
+    options:{responsive:true, plugins:{legend:{position:'bottom'}, title:{display:true, text:k+'.'+name+' 跨月趨勢'}}}
+  });
 }
 
 // ============ 客戶清單跨裝置同步 ============
@@ -2349,8 +2713,9 @@ setSyncStatus(window.FIREBASE_READY, window.FIREBASE_READY?'☁️ 雲端就緒'
   const cfg = loadGhCfg();
   if(!cfg) return;
   setGhStatus('ok','🐙 連線中...');
-  // 先拉客戶清單（跨裝置同步）
+  // 先拉客戶清單與模板（跨裝置同步）
   await pullClientList();
+  await pullTemplates();
   // 確保 GH cfg 的 repo/path 對應到最新的當前客戶
   const cur = getCurrentClient();
   if(cur){
