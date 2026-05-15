@@ -61,6 +61,26 @@
   }
   header .client-switcher .client-btn:hover { background:#f6ad55; }
 
+  /* 當前客戶大橫幅 */
+  .current-client-banner {
+    background:linear-gradient(90deg, #2c5282 0%, #4a6fa5 50%, #2c5282 100%);
+    color:#fff; padding:14px 24px; display:flex; align-items:center; gap:14px;
+    border-bottom:3px solid #1a365d;
+    box-shadow:0 2px 4px rgba(0,0,0,.1);
+  }
+  .current-client-banner .ccb-label {
+    font-size:13px; opacity:.85; letter-spacing:1px;
+  }
+  .current-client-banner .ccb-name {
+    font-size:24px; font-weight:700; letter-spacing:1px;
+    text-shadow:0 1px 3px rgba(0,0,0,.2);
+  }
+  .current-client-banner .ccb-icon { font-size:28px; }
+  .current-client-banner .ccb-meta {
+    margin-left:auto; font-size:12px; opacity:.85; text-align:right; line-height:1.4;
+  }
+  @media print { .current-client-banner { background:#fff !important; color:#000 !important; border-bottom:2px solid #000; } }
+
   /* 客戶管理 Modal 內的 client list */
   .client-list { max-height:50vh; overflow-y:auto; margin:10px 0; }
   table.client-tbl { width:100%; border-collapse:collapse; font-size:13px; }
@@ -87,7 +107,7 @@
   nav.tabs {
     background:#fff; border-bottom:1px solid #e2e8f0;
     padding:0 24px; display:flex; gap:4px;
-    position:sticky; top:58px; z-index:99;
+    position:sticky; top:115px; z-index:99;
   }
   nav.tabs button {
     padding:12px 20px; border:0; background:transparent; cursor:pointer;
@@ -376,6 +396,16 @@
     <button onclick="resetAll()" class="danger">↺ 重設全部</button>
   </div>
 </header>
+
+<div class="current-client-banner" id="currentClientBanner">
+  <span class="ccb-icon">👤</span>
+  <span class="ccb-label">目前檢視客戶</span>
+  <span class="ccb-name" id="ccbName">—</span>
+  <div class="ccb-meta">
+    <div id="ccbRepo" style="font-family:monospace;"></div>
+    <div id="ccbCount"></div>
+  </div>
+</div>
 
 <nav class="tabs">
   <button class="tab-btn active" data-tab="tracker">即時花費追蹤</button>
@@ -899,7 +929,8 @@ function mergeWithInitial(obj){
   if(Array.isArray(obj.a)) out.a=obj.a;
   if(Array.isArray(obj.b)) out.b=obj.b;
   if(Array.isArray(obj.c)) out.c=obj.c;
-  ['a','b'].forEach(k=>out[k].forEach(it=>{ if(!Array.isArray(it.details)) it.details=[]; if(it.spent==null) it.spent=0; }));
+  if(obj.notes && typeof obj.notes==='object') out.notes = obj.notes;
+  ['a','b'].forEach(k=>out[k].forEach(it=>{ if(!Array.isArray(it.details)) it.details=[]; if(it.spent==null) it.spent=0; if(it.payment==null) it.payment=''; }));
 
   // 處理多月份結構
   out.months = obj.months || {};
@@ -1075,6 +1106,9 @@ function renderBudgetTbl(key, tblId){
   // bind
   tbody.querySelectorAll('input[data-f]').forEach(inp=>{
     inp.addEventListener('input', onFieldChange);
+  });
+  tbody.querySelectorAll('select[data-f]').forEach(sel=>{
+    sel.addEventListener('change', onFieldChange);
   });
 
   document.getElementById('foot'+key.toUpperCase()+'_budget').textContent = fmt(totalBudget);
@@ -1269,7 +1303,9 @@ function onFieldChange(e){
   const k=e.target.dataset.k, i=+e.target.dataset.i, f=e.target.dataset.f;
   const di=e.target.dataset.di;
   let v=e.target.value;
-  if(f!=='name'&&f!=='note'&&f!=='date') v = v===''?0:parseFloat(v);
+  // 字串類型欄位保持原值，其他欄位轉數字
+  const stringFields = ['name','note','date','payment'];
+  if(!stringFields.includes(f)) v = v===''?0:parseFloat(v);
   if(di!=null){
     if(!Array.isArray(state[k][i].details)) state[k][i].details=[];
     state[k][i].details[+di][f]=v;
@@ -1280,6 +1316,12 @@ function onFieldChange(e){
   if(k==='a' || k==='b'){
     updateRowDisplay(k, i);
     updateBudgetFooter(k);
+    renderPaymentSummary(k);
+    // 重新評估警示（解除已關閉狀態，因為資料變了）
+    if(f==='spent' || f==='budget'){
+      alertDismissed = false;
+      checkBudgetAlert();
+    }
   } else if(k==='c'){
     updateAssetRow(i);
     updateAssetFooter();
@@ -2064,12 +2106,31 @@ function renderClientSelector(){
   const ids = Object.keys(list.clients);
   if(ids.length===0){
     sel.innerHTML = '<option value="">（尚未新增）</option>';
+    updateClientBanner(null);
     return;
   }
   sel.innerHTML = ids.map(id=>{
     const c = list.clients[id];
     return `<option value="${id}" ${id===list.currentId?'selected':''}>${c.name||id}</option>`;
   }).join('');
+  updateClientBanner(list.clients[list.currentId]);
+}
+
+function updateClientBanner(client){
+  const nameEl = document.getElementById('ccbName');
+  const repoEl = document.getElementById('ccbRepo');
+  const countEl = document.getElementById('ccbCount');
+  if(!nameEl) return;
+  if(!client){
+    nameEl.textContent = '尚未新增客戶';
+    repoEl.textContent = '';
+    countEl.textContent = '';
+    return;
+  }
+  nameEl.textContent = client.name || '(未命名)';
+  repoEl.textContent = (client.repo||'')+' / '+(client.path||'');
+  const monthCount = Object.keys(state.months||{}).length;
+  countEl.textContent = `${monthCount} 個月份資料 ・ A 帳戶 ${state.a.length} 項 ・ B 帳戶 ${state.b.length} 項`;
 }
 
 async function switchClient(id){
