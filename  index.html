@@ -1,0 +1,2899 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>簡世華 ABC 帳戶管理 - 1150320 花費追蹤版</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<!-- Firebase（如未設定，下方會自動 fallback 到 localStorage） -->
+<script type="module">
+  // 全域變數先建立，HTML 端的同步邏輯會檢查 window.FIREBASE_READY
+  window.FIREBASE_READY = false;
+  window.firebaseCloud = null;
+
+  // 讀取使用者貼入的 Firebase 設定（存在 localStorage）
+  const cfgStr = localStorage.getItem('firebase_config');
+  if (cfgStr) {
+    try {
+      const cfg = JSON.parse(cfgStr);
+      const { initializeApp } = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js');
+      const { getDatabase, ref, onValue, set } = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js');
+      const app = initializeApp(cfg);
+      const db = getDatabase(app);
+      const dataRef = ref(db, 'abc_1150320');
+      window.firebaseCloud = {
+        save: (data) => set(dataRef, { ...data, _ts: Date.now() }),
+        subscribe: (cb) => onValue(dataRef, (snap) => cb(snap.val()))
+      };
+      window.FIREBASE_READY = true;
+      console.log('✓ Firebase 已連線');
+      document.dispatchEvent(new Event('firebase-ready'));
+    } catch (e) {
+      console.warn('Firebase 設定無效，使用本機儲存：', e);
+    }
+  }
+</script>
+<style>
+  * { box-sizing: border-box; }
+  :root { --fs-scale: 1; }
+  body.fs-l { --fs-scale: 1.18; }
+  body.fs-xl { --fs-scale: 1.35; }
+  body {
+    font-family: "Microsoft JhengHei","PingFang TC","Noto Sans TC",Arial,sans-serif;
+    margin:0; padding:0; background:#f5f6fa; color:#222;
+    font-size: calc(14px * var(--fs-scale));
+  }
+  /* 字級縮放：對主要顯示元素套用比例 */
+  body.fs-l table.tracker thead th,
+  body.fs-xl table.tracker thead th { font-size: calc(12px * var(--fs-scale)); }
+  body.fs-l table.tracker input,
+  body.fs-xl table.tracker input { font-size: calc(13px * var(--fs-scale)); }
+  body.fs-l table.tracker td,
+  body.fs-xl table.tracker td { font-size: calc(13px * var(--fs-scale)); }
+  body.fs-l nav.tabs button,
+  body.fs-xl nav.tabs button { font-size: calc(14px * var(--fs-scale)); }
+  body.fs-l .income-line input,
+  body.fs-xl .income-line input { font-size: calc(14px * var(--fs-scale)); }
+  body.fs-l .income-line label,
+  body.fs-xl .income-line label { font-size: calc(14px * var(--fs-scale)); }
+  body.fs-l .income-line .readonly-val,
+  body.fs-xl .income-line .readonly-val { font-size: calc(14px * var(--fs-scale)); }
+  body.fs-l .income-line .readonly-val.big,
+  body.fs-xl .income-line .readonly-val.big { font-size: calc(18px * var(--fs-scale)); }
+  body.fs-l .card h2,
+  body.fs-xl .card h2 { font-size: calc(16px * var(--fs-scale)); }
+  body.fs-l .summary-tile .label,
+  body.fs-xl .summary-tile .label { font-size: calc(12px * var(--fs-scale)); }
+  body.fs-l .summary-tile .value,
+  body.fs-xl .summary-tile .value { font-size: calc(20px * var(--fs-scale)); }
+  body.fs-l .gc-row,
+  body.fs-xl .gc-row { font-size: calc(14px * var(--fs-scale)); }
+  body.fs-l .gc-row .gc-val,
+  body.fs-xl .gc-row .gc-val { font-size: calc(16px * var(--fs-scale)); }
+  body.fs-l .gc-row.total .gc-val,
+  body.fs-xl .gc-row.total .gc-val { font-size: calc(22px * var(--fs-scale)); }
+  body.fs-l .gc-row.highlight .gc-val,
+  body.fs-xl .gc-row.highlight .gc-val { font-size: calc(24px * var(--fs-scale)); }
+  body.fs-l .notes-box textarea,
+  body.fs-xl .notes-box textarea { font-size: calc(13px * var(--fs-scale)); }
+  body.fs-l table.history th,
+  body.fs-xl table.history th { font-size: calc(11px * var(--fs-scale)); }
+  body.fs-l table.history td,
+  body.fs-xl table.history td { font-size: calc(12px * var(--fs-scale)); }
+  body.fs-l .current-client-banner .ccb-name,
+  body.fs-xl .current-client-banner .ccb-name { font-size: calc(24px * var(--fs-scale)); }
+  body.fs-l .add-row,
+  body.fs-xl .add-row { font-size: calc(12px * var(--fs-scale)); }
+
+  /* 字級按鈕 */
+  .fs-buttons { display:inline-flex; background:rgba(255,255,255,.15); border-radius:6px; padding:2px; }
+  .fs-buttons button {
+    background:transparent; border:0; color:#fff; padding:4px 10px;
+    cursor:pointer; font-weight:600; border-radius:4px; font-size:13px;
+  }
+  .fs-buttons button:hover { background:rgba(255,255,255,.15); }
+  .fs-buttons button.active { background:#fff; color:#2c5282; }
+  header {
+    background:linear-gradient(135deg,#2c5282,#4a6fa5);
+    color:#fff; padding:14px 24px;
+    display:flex; flex-wrap:wrap; align-items:center; gap:14px;
+    box-shadow:0 2px 6px rgba(0,0,0,.15);
+    position:sticky; top:0; z-index:100;
+  }
+  header h1 { font-size:17px; margin:0; }
+  header .tag { background:rgba(255,255,255,.18); padding:3px 8px; border-radius:4px; font-size:12px; }
+  header .client-switcher { display:flex; align-items:center; gap:6px; background:rgba(255,255,255,.15); padding:4px 10px; border-radius:8px; }
+  header .client-switcher label { font-size:12px; opacity:.85; }
+  header .client-switcher select {
+    padding:4px 8px; border:0; border-radius:5px; background:#fff; color:#2c5282;
+    font-size:13px; font-weight:600; min-width:140px; max-width:200px; cursor:pointer;
+  }
+  header .client-switcher .client-btn {
+    padding:4px 10px; border:0; border-radius:5px; background:#fbd38d; color:#7b341e;
+    cursor:pointer; font-size:12px; font-weight:600;
+  }
+  header .client-switcher .client-btn:hover { background:#f6ad55; }
+
+  /* 當前客戶大橫幅 */
+  .current-client-banner {
+    background:linear-gradient(90deg, #2c5282 0%, #4a6fa5 50%, #2c5282 100%);
+    color:#fff; padding:14px 24px; display:flex; align-items:center; gap:14px;
+    border-bottom:3px solid #1a365d;
+    box-shadow:0 2px 4px rgba(0,0,0,.1);
+  }
+  .current-client-banner .ccb-label {
+    font-size:13px; opacity:.85; letter-spacing:1px;
+  }
+  .current-client-banner .ccb-name {
+    font-size:24px; font-weight:700; letter-spacing:1px;
+    text-shadow:0 1px 3px rgba(0,0,0,.2);
+  }
+  .current-client-banner .ccb-icon { font-size:28px; }
+  .current-client-banner .ccb-meta {
+    margin-left:auto; font-size:12px; opacity:.85; text-align:right; line-height:1.4;
+  }
+  @media print { .current-client-banner { background:#fff !important; color:#000 !important; border-bottom:2px solid #000; } }
+
+  /* 客戶管理 Modal 內的 client list */
+  .client-list { max-height:50vh; overflow-y:auto; margin:10px 0; }
+  table.client-tbl { width:100%; border-collapse:collapse; font-size:13px; }
+  table.client-tbl th, table.client-tbl td { padding:8px 10px; border-bottom:1px solid #e2e8f0; text-align:left; }
+  table.client-tbl th { background:#f7fafc; font-weight:600; color:#4a5568; font-size:12px; }
+  table.client-tbl tr.current { background:#fffbeb; }
+  table.client-tbl input { width:100%; padding:4px 6px; border:1px solid #cbd5e0; border-radius:4px; font-size:12px; }
+  table.client-tbl button { padding:4px 8px; border-radius:4px; cursor:pointer; font-size:11px; border:0; margin-right:3px; }
+  table.client-tbl button.use-btn { background:#48bb78; color:#fff; }
+  table.client-tbl button.use-btn:hover { background:#38a169; }
+  table.client-tbl button.del-btn { background:#fed7d7; color:#c53030; }
+  table.client-tbl button.del-btn:hover { background:#fc8181; color:#fff; }
+  header .sync-status { font-size:12px; padding:4px 10px; border-radius:20px; background:rgba(255,255,255,.15); }
+  header .sync-status.online { background:#48bb78; }
+  header .toolbar { display:flex; gap:8px; flex-wrap:wrap; margin-left:auto; align-items:center; }
+  header button {
+    padding:6px 12px; border:0; border-radius:6px;
+    background:#fff; color:#2c5282; font-weight:600; cursor:pointer; font-size:13px;
+  }
+  header button:hover { background:#e2e8f0; }
+  header button.primary { background:#48bb78; color:#fff; }
+  header button.danger { background:#fc8181; color:#fff; }
+
+  nav.tabs {
+    background:#fff; border-bottom:1px solid #e2e8f0;
+    padding:0 24px; display:flex; gap:4px;
+    position:sticky; top:115px; z-index:99;
+  }
+  nav.tabs button {
+    padding:12px 20px; border:0; background:transparent; cursor:pointer;
+    font-size:14px; color:#4a5568; border-bottom:3px solid transparent;
+  }
+  nav.tabs button.active { color:#2c5282; border-bottom-color:#2c5282; font-weight:700; }
+  nav.tabs button:hover { background:#f7fafc; }
+
+  main { padding:20px 24px; max-width:1400px; margin:0 auto; }
+  .panel { display:none; }
+  .panel.active { display:block; }
+
+  .card { background:#fff; border-radius:10px; padding:18px; box-shadow:0 1px 3px rgba(0,0,0,.06); margin-bottom:16px; }
+  .card h2 { margin:0 0 12px; font-size:16px; color:#2c5282; border-left:4px solid #2c5282; padding-left:10px; }
+  .card .sub { font-size:12px; color:#718096; margin-bottom:8px; }
+
+  .income-row { display:flex; gap:18px; flex-wrap:wrap; align-items:center; margin-bottom:10px; }
+  .income-row label { font-weight:600; min-width:110px; }
+  .income-row input[type=number] {
+    width:160px; padding:6px 10px; border:1px solid #cbd5e0; border-radius:5px; font-size:14px; text-align:right;
+  }
+  .income-block { display:flex; flex-direction:column; gap:10px; max-width:680px; margin-bottom:12px; }
+  .income-line { display:flex; gap:14px; align-items:center; padding:6px 0; flex-wrap:wrap; }
+  .income-line label { font-weight:600; min-width:130px; }
+  .income-line input[type=number], .income-line input[type=month] {
+    width:200px; padding:6px 10px; border:1px solid #cbd5e0; border-radius:5px; font-size:14px; text-align:right;
+  }
+  .income-line .sub { font-size:12px; color:#718096; }
+  .income-line.total-line { background:#f7fafc; border-radius:6px; padding:8px 12px; border-left:3px solid #2c5282; }
+  .income-line .readonly-val {
+    width:200px; padding:6px 10px; background:#edf2f7; border:1px solid #cbd5e0; border-radius:5px;
+    font-size:14px; text-align:right; font-weight:700; color:#2c5282;
+  }
+  .income-line .readonly-val.big { font-size:18px; color:#2f855a; background:#f0fff4; border-color:#9ae6b4; }
+
+  /* Sub-tabs (ABC) */
+  .sub-tabs { display:flex; gap:6px; margin-bottom:14px; align-items:center; flex-wrap:wrap; border-bottom:2px solid #e2e8f0; padding-bottom:0; }
+  .sub-tab-btn {
+    padding:10px 18px; border:0; background:transparent; cursor:pointer;
+    font-size:14px; color:#4a5568; border-bottom:3px solid transparent;
+    margin-bottom:-2px; font-weight:600;
+  }
+  .sub-tab-btn:hover { background:#f7fafc; color:#2c5282; }
+  .sub-tab-btn.active { color:#2c5282; border-bottom-color:#2c5282; background:#ebf4ff; }
+  .sub-tab-chip { margin-left:auto; padding:4px 12px; border-radius:14px; background:#edf2f7; color:#2c5282; font-size:13px; font-weight:600; }
+  .sub-panel { display:none; }
+  .sub-panel.active { display:block; }
+  .period-input { display:inline-flex; align-items:center; gap:6px; }
+  .period-input input { padding:4px 8px; width:90px; border:1px solid #cbd5e0; border-radius:5px; font-size:13px; }
+  .reset-btns { display:flex; gap:8px; flex-wrap:wrap; margin-top:6px; }
+  .reset-btns button { padding:6px 12px; border:1px solid #cbd5e0; border-radius:6px; background:#fff; font-size:12px; cursor:pointer; }
+  .reset-btns button:hover { background:#fed7d7; border-color:#fc8181; color:#c53030; }
+
+  .acc-section { margin-bottom:18px; }
+  .acc-section h3 {
+    margin:0 0 8px; font-size:15px; padding:8px 14px; border-radius:6px;
+    color:#fff; display:flex; justify-content:space-between; align-items:center;
+  }
+  .acc-section h3 .summary-chip {
+    font-size:12px; background:rgba(255,255,255,.22); padding:3px 10px; border-radius:14px;
+  }
+  .acc-section.A h3 { background:#3182ce; }
+  .acc-section.B h3 { background:#dd6b20; }
+  .acc-section.C h3 { background:#38a169; }
+
+  table.tracker { width:100%; border-collapse:collapse; font-size:13px; }
+  table.tracker thead th { background:#f7fafc; padding:8px 6px; text-align:left; border-bottom:2px solid #e2e8f0; font-size:12px; color:#4a5568; }
+  table.tracker thead th.num { text-align:right; }
+  table.tracker tbody td { padding:6px; border-bottom:1px solid #edf2f7; vertical-align:middle; }
+  table.tracker tbody td.num { text-align:right; white-space:nowrap; }
+  table.tracker tbody td.name { word-break:break-all; min-width:200px; }
+  table.tracker input { width:100%; border:0; background:transparent; padding:4px 6px; font-size:13px; border-radius:4px; }
+  table.tracker input.num { text-align:right; }
+  table.tracker input:focus { background:#fffbeb; outline:1px solid #f6ad55; }
+  table.tracker input.spent { background:#e6fffa; }
+  table.tracker input.spent:focus { background:#fef5e7; }
+  /* 隱藏 number 上下箭頭 */
+  table.tracker input[type=number]::-webkit-outer-spin-button,
+  table.tracker input[type=number]::-webkit-inner-spin-button { -webkit-appearance:none; margin:0; }
+  table.tracker input[type=number] { -moz-appearance:textfield; appearance:textfield; }
+  .income-line input[type=number]::-webkit-outer-spin-button,
+  .income-line input[type=number]::-webkit-inner-spin-button { -webkit-appearance:none; margin:0; }
+  .income-line input[type=number] { -moz-appearance:textfield; appearance:textfield; }
+  table.tracker td.bal-pos { color:#2f855a; font-weight:600; }
+  table.tracker td.bal-neg { color:#c53030; font-weight:700; }
+  table.tracker tfoot td { font-weight:700; background:#edf2f7; color:#2c5282; padding:8px 6px; }
+  table.tracker .progress {
+    width:80px; height:8px; background:#e2e8f0; border-radius:4px; overflow:hidden; display:inline-block; vertical-align:middle;
+  }
+  table.tracker .progress-bar { height:100%; background:#48bb78; transition:width .3s; }
+  table.tracker .progress-bar.warn { background:#ed8936; }
+  table.tracker .progress-bar.over { background:#c53030; }
+  table.tracker .progress-text { font-size:11px; color:#718096; margin-left:6px; vertical-align:middle; }
+  table.tracker .del-btn { background:#fed7d7; color:#c53030; border:0; border-radius:4px; padding:3px 8px; cursor:pointer; font-size:11px; }
+  table.tracker .del-btn:hover { background:#fc8181; color:#fff; }
+  table.tracker .add-detail-btn { background:#bee3f8; color:#2b6cb0; border:0; border-radius:4px; padding:3px 8px; cursor:pointer; font-size:11px; }
+  table.tracker .add-detail-btn:hover { background:#90cdf4; }
+  table.tracker .move-btn { background:#e2e8f0; color:#2d3748; border:0; border-radius:4px; padding:3px 6px; cursor:pointer; font-size:11px; line-height:1; }
+  table.tracker .move-btn:hover { background:#cbd5e0; }
+  table.tracker .move-btn:disabled { background:#f7fafc; color:#cbd5e0; cursor:not-allowed; }
+  table.tracker .drag-handle { cursor:grab; padding:2px 6px; color:#a0aec0; font-size:14px; user-select:none; }
+  table.tracker .drag-handle:hover { color:#4a5568; }
+  table.tracker tr.dragging { opacity:.4; }
+  table.tracker tr.drag-over { border-top:3px solid #3182ce; }
+  table.tracker .row-actions { display:inline-flex; gap:3px; white-space:nowrap; align-items:center; }
+
+  .add-row { margin-top:8px; padding:6px 12px; background:#edf2f7; border:1px dashed #a0aec0; border-radius:6px; cursor:pointer; font-size:12px; width:100%; }
+  .add-row:hover { background:#e2e8f0; }
+
+  /* 明細列 */
+  tr.detail-row td { background:#fafafa; padding:4px 6px 4px 30px; border-bottom:1px dashed #e2e8f0; }
+  tr.detail-row .detail-grid { display:grid; grid-template-columns: 130px 130px 1fr auto; gap:8px; align-items:center; }
+  tr.detail-row input { background:#fff; border:1px solid #e2e8f0; padding:3px 6px; font-size:12px; }
+
+  .summary-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(260px,1fr)); gap:14px; }
+  .summary-tile { background:linear-gradient(135deg,#edf2f7,#fff); padding:14px; border-radius:8px; border:1px solid #e2e8f0; }
+  .summary-tile .label { font-size:12px; color:#718096; }
+  .summary-tile .value { font-size:20px; font-weight:700; margin-top:4px; color:#2c5282; }
+  .summary-tile.pos .value { color:#2f855a; }
+  .summary-tile.neg .value { color:#c53030; }
+  .summary-tile .sub { font-size:11px; color:#a0aec0; margin-top:2px; }
+
+  /* === 群組卡片：上下對應的整體狀態 === */
+  .group-card {
+    background:#fff; border-radius:12px; padding:0; border:1px solid #e2e8f0;
+    overflow:hidden; box-shadow:0 2px 4px rgba(0,0,0,.04);
+    display:flex; flex-direction:column;
+  }
+  .group-card .gc-header {
+    padding:10px 16px; color:#fff; font-weight:700; font-size:14px;
+    display:flex; align-items:center; gap:8px;
+  }
+  .group-card.income .gc-header { background:linear-gradient(135deg,#2c5282,#4a6fa5); }
+  .group-card.a-acc .gc-header { background:linear-gradient(135deg,#3182ce,#63b3ed); }
+  .group-card.b-acc .gc-header { background:linear-gradient(135deg,#dd6b20,#f6ad55); }
+  .group-card.c-acc .gc-header { background:linear-gradient(135deg,#38a169,#68d391); }
+  .group-card.balance .gc-header { background:linear-gradient(135deg,#553c9a,#9f7aea); }
+  .group-card .gc-body { padding:14px 16px; display:flex; flex-direction:column; gap:8px; }
+  .gc-row {
+    display:flex; justify-content:space-between; align-items:baseline;
+    padding:4px 0; font-size:14px; color:#4a5568;
+  }
+  .gc-row .gc-lbl { font-weight:500; }
+  .gc-row .gc-val { font-weight:700; color:#2d3748; font-size:16px; font-variant-numeric:tabular-nums; }
+  .gc-row.op .gc-lbl { color:#a0aec0; font-size:13px; }
+  .gc-row.op .gc-val { color:#718096; font-weight:600; font-size:14px; }
+  .gc-divider { border:0; border-top:1px dashed #cbd5e0; margin:4px 0; }
+  .gc-row.total { padding-top:8px; }
+  .gc-row.total .gc-lbl { font-weight:700; color:#2d3748; }
+  .gc-row.total .gc-val { font-size:22px; color:#2c5282; }
+  .gc-row.highlight .gc-val { font-size:24px; }
+  .gc-row.highlight.pos .gc-val { color:#2f855a; }
+  .gc-row.highlight.neg .gc-val { color:#c53030; }
+  .gc-meter { height:8px; background:#e2e8f0; border-radius:4px; overflow:hidden; margin:6px 0 2px; }
+  .gc-meter > div { height:100%; background:#48bb78; transition:width .3s; }
+  .gc-meter > div.warn { background:#ed8936; }
+  .gc-meter > div.over { background:#c53030; }
+  .gc-meter-text { font-size:11px; color:#a0aec0; text-align:right; }
+
+  /* 月份控制 */
+  .month-ctrl { display:flex; gap:8px; flex-wrap:wrap; align-items:center; }
+  .month-ctrl button {
+    padding:7px 14px; border:1px solid #cbd5e0; background:#fff; border-radius:6px;
+    cursor:pointer; font-size:13px; color:#2d3748;
+  }
+  .month-ctrl button:hover { background:#ebf4ff; border-color:#3182ce; color:#2c5282; }
+  .month-ctrl button.primary { background:#3182ce; color:#fff; border-color:#3182ce; font-weight:600; }
+  .month-ctrl button.primary:hover { background:#2c5282; }
+  .month-ctrl select { padding:7px 12px; border:1px solid #cbd5e0; border-radius:6px; font-size:13px; background:#fff; }
+  .month-ctrl .month-chip {
+    padding:4px 12px; background:#ebf4ff; color:#2c5282; border-radius:14px;
+    font-size:12px; font-weight:600;
+  }
+
+  /* 歷史統計表 */
+  table.history { width:100%; border-collapse:collapse; font-size:12px; }
+  table.history th, table.history td { padding:6px 8px; border:1px solid #e2e8f0; text-align:right; white-space:nowrap; }
+  table.history th { background:#2c5282; color:#fff; font-weight:600; font-size:11px; }
+  table.history th.acc-a { background:#3182ce; }
+  table.history th.acc-b { background:#dd6b20; }
+  table.history th.acc-c { background:#38a169; }
+  table.history td.name { text-align:left; min-width:160px; background:#f7fafc; font-weight:500; }
+  table.history td.total-col { background:#fefcbf; font-weight:700; }
+  table.history td.avg-col { background:#e6fffa; font-weight:700; }
+  table.history tfoot td { background:#edf2f7; font-weight:700; color:#2c5282; }
+
+  /* 備註欄 */
+  .notes-box { margin-top:18px; background:#fffbeb; border:1px solid #fbd38d; border-radius:8px; padding:12px; }
+  .notes-box h3 { margin:0 0 8px; font-size:14px; color:#7b341e; display:flex; align-items:center; gap:6px; }
+  .notes-box textarea {
+    width:100%; min-height:120px; padding:8px 10px; border:1px solid #e2e8f0; border-radius:6px;
+    font-family:inherit; font-size:13px; line-height:1.6; resize:vertical;
+  }
+  .notes-box textarea:focus { outline:1px solid #f6ad55; background:#fff; }
+
+  /* Toast 通知（右下角自動消失） */
+  .toast-container {
+    position:fixed; bottom:24px; right:24px; z-index:300;
+    display:flex; flex-direction:column; gap:8px; pointer-events:none;
+  }
+  .toast {
+    background:#2d3748; color:#fff; padding:10px 16px; border-radius:8px;
+    font-size:13px; box-shadow:0 4px 12px rgba(0,0,0,.2);
+    animation:toast-in .25s ease-out, toast-out .3s ease-in 2.5s forwards;
+    max-width:340px; pointer-events:auto;
+  }
+  .toast.success { background:#38a169; }
+  .toast.warn { background:#dd6b20; }
+  .toast.error { background:#c53030; }
+  @keyframes toast-in { from{opacity:0;transform:translateY(20px);} to{opacity:1;transform:translateY(0);} }
+  @keyframes toast-out { to{opacity:0;transform:translateY(-10px);} }
+
+  /* 警示橫條 */
+  .alert-banner {
+    background:linear-gradient(135deg,#c53030,#e53e3e); color:#fff;
+    padding:10px 18px; border-radius:8px; margin-bottom:14px;
+    display:none; align-items:center; gap:10px; font-size:14px;
+    box-shadow:0 2px 6px rgba(197,48,48,.3);
+  }
+  .alert-banner.show { display:flex; }
+  .alert-banner .alert-icon { font-size:20px; }
+  .alert-banner .alert-content { flex:1; }
+  .alert-banner .alert-content strong { font-weight:700; }
+  .alert-banner .close-btn { background:rgba(255,255,255,.2); border:0; color:#fff; padding:4px 10px; border-radius:4px; cursor:pointer; font-size:12px; }
+  .alert-banner .close-btn:hover { background:rgba(255,255,255,.3); }
+
+  /* 支付方式 select */
+  table.tracker select.payment {
+    width:80px; padding:3px 4px; border:0; background:transparent; font-size:12px;
+    border-radius:4px; cursor:pointer;
+  }
+  table.tracker select.payment:focus { background:#fffbeb; outline:1px solid #f6ad55; }
+  .payment-summary { display:flex; gap:14px; flex-wrap:wrap; padding:10px; background:#f7fafc; border-radius:6px; margin-top:10px; }
+  .payment-summary .pay-pill { display:flex; align-items:center; gap:4px; font-size:12px; padding:4px 10px; border-radius:14px; }
+  .payment-summary .pay-pill.cc { background:#bee3f8; color:#2c5282; }
+  .payment-summary .pay-pill.cash { background:#c6f6d5; color:#22543d; }
+  .payment-summary .pay-pill.tx { background:#fef5e7; color:#7b341e; }
+  .payment-summary .pay-pill.other { background:#e9d8fd; color:#553c9a; }
+
+  .chart-grid { display:grid; grid-template-columns:1fr 1fr; gap:14px; }
+  @media (max-width:900px){ .chart-grid { grid-template-columns:1fr; } }
+  .chart-box { background:#fff; padding:14px; border-radius:10px; box-shadow:0 1px 3px rgba(0,0,0,.06); }
+  .chart-box h3 { margin:0 0 10px; font-size:14px; color:#2c5282; }
+
+  .modal-bg { display:none; position:fixed; inset:0; background:rgba(0,0,0,.5); z-index:200; align-items:center; justify-content:center; }
+  .modal-bg.open { display:flex; }
+  .modal { background:#fff; border-radius:10px; padding:20px; max-width:560px; width:90%; max-height:84vh; overflow:auto; }
+  .modal h3 { margin:0 0 10px; }
+  .modal textarea { width:100%; height:160px; font-family:monospace; font-size:11px; padding:8px; }
+  .modal .actions { margin-top:10px; display:flex; gap:8px; justify-content:flex-end; }
+  .modal pre.guide { background:#f7fafc; padding:10px; border-radius:6px; font-size:11px; overflow:auto; max-height:200px; }
+
+  .firebase-pill {
+    display:inline-block; padding:4px 10px; border-radius:14px; background:#fbd38d; color:#7b341e;
+    font-size:12px; cursor:pointer;
+  }
+  .firebase-pill.online { background:#9ae6b4; color:#22543d; }
+
+  @media print {
+    header, nav.tabs, .toolbar, .add-row, .del-btn, .reset-btns, .add-detail-btn { display:none !important; }
+    main { padding:0; max-width:none; }
+    .panel { display:block !important; page-break-after:always; }
+    .card { box-shadow:none; border:1px solid #ddd; page-break-inside:avoid; }
+    body { background:#fff; font-size:11px; }
+  }
+</style>
+</head>
+<body>
+<header>
+  <h1>📊 ABC 帳戶</h1>
+  <div class="client-switcher">
+    <label>客戶：</label>
+    <select id="clientSel" onchange="switchClient(this.value)"></select>
+    <button class="client-btn" onclick="openClientModal()" title="管理客戶清單">👥 客戶管理</button>
+  </div>
+  <div class="fs-buttons" title="調整字級大小">
+    <button data-fs="" onclick="setFontSize('')">A 標準</button>
+    <button data-fs="l" onclick="setFontSize('l')">A 大</button>
+    <button data-fs="xl" onclick="setFontSize('xl')">A 特大</button>
+  </div>
+  <span class="sync-status" id="syncStatus">🟡 本機儲存</span>
+  <div class="toolbar">
+    <button onclick="undoLast()" title="撤銷最近一次操作（Ctrl+Z）">↶ 復原</button>
+    <button onclick="openBackupModal()" title="瀏覽歷史快照並還原">🕓 備份歷史</button>
+    <button onclick="openGithubModal()">🐙 GitHub 同步</button>
+    <button onclick="openFirebaseModal()">⚙️ Firebase 同步</button>
+    <button onclick="exportJSON()">📤 匯出 JSON</button>
+    <button onclick="importJSON()">📥 匯入 JSON</button>
+    <button onclick="exportExcel()" class="primary">📊 匯出 Excel</button>
+    <button onclick="window.print()">🖨️ 列印 / PDF</button>
+    <button onclick="resetAll()" class="danger">↺ 重設全部</button>
+  </div>
+</header>
+
+<div class="current-client-banner" id="currentClientBanner">
+  <span class="ccb-icon">👤</span>
+  <span class="ccb-label">目前檢視客戶</span>
+  <span class="ccb-name" id="ccbName">—</span>
+  <div class="ccb-meta">
+    <div id="ccbRepo" style="font-family:monospace;"></div>
+    <div id="ccbCount"></div>
+  </div>
+</div>
+
+<nav class="tabs">
+  <button class="tab-btn active" data-tab="tracker">即時花費追蹤</button>
+  <button class="tab-btn" data-tab="charts">圖表分析</button>
+  <button class="tab-btn" data-tab="summary">列印總覽</button>
+</nav>
+
+<main>
+  <!-- 警示橫條（任一分頁都顯示在最上面） -->
+  <div class="alert-banner" id="alertBanner">
+    <span class="alert-icon">⚠️</span>
+    <div class="alert-content" id="alertContent"></div>
+    <button class="close-btn" onclick="dismissAlert()">關閉</button>
+  </div>
+
+  <!-- 即時花費追蹤 -->
+  <section id="panel-tracker" class="panel active">
+    <div class="card">
+      <h2>收入 / 期間設定</h2>
+      <div class="income-block">
+        <div class="income-line">
+          <label>實領月收入</label>
+          <input type="number" id="monthlyIncome" oninput="onIncomeChange()">
+          <span class="sub">每月固定收入</span>
+        </div>
+        <div class="income-line">
+          <label>租金收入（月）</label>
+          <input type="number" id="rentIncome" oninput="onIncomeChange()">
+          <span class="sub">每月租金收益</span>
+        </div>
+        <div class="income-line total-line">
+          <label>月收入合計</label>
+          <div class="readonly-val" id="monthTotal">$0</div>
+          <span class="sub">= 實領月收入 + 租金收入</span>
+        </div>
+        <div class="income-line total-line">
+          <label>年收入合計</label>
+          <div class="readonly-val big" id="yearTotal">$0</div>
+          <span class="sub">= 月收入合計 × 12 個月</span>
+        </div>
+        <div class="income-line">
+          <label>當前月份</label>
+          <div class="month-ctrl">
+            <input type="month" id="curMonth" style="width:160px;">
+            <button class="primary" onclick="addNextMonth()" title="複製當月資料到下個月，並把已花費歸零">＋ 新增下個月（複製）</button>
+            <button onclick="addNextMonthBlank()" title="建立空白的下個月（不複製項目）">＋ 新增下個月（空白）</button>
+            <label style="font-size:12px;color:#718096;">切換已有月份：</label>
+            <select id="monthSwitcher" onchange="switchMonth(this.value)"></select>
+            <button onclick="deleteCurMonth()" title="刪除目前月份的資料" style="color:#c53030;">刪除此月</button>
+          </div>
+        </div>
+      </div>
+      <div class="reset-btns">
+        <button onclick="resetSpending('a')">↻ 重設 A 帳戶花費（不換月，僅清歸零）</button>
+        <button onclick="resetSpending('b')">↻ 重設 B 帳戶花費</button>
+        <span class="sub" style="font-size:11px;color:#718096;align-self:center;">提示：建議用上方「+ 新增下個月（複製）」會自動保留歷史、重設花費</span>
+      </div>
+    </div>
+
+    <!-- 摘要 tiles -->
+    <div class="card">
+      <h2>整體狀態（目前月份）</h2>
+      <div class="summary-grid" id="summaryGrid"></div>
+    </div>
+
+    <!-- 歷史月份統計 -->
+    <div class="card">
+      <h2>歷史月份統計（合計與月平均）</h2>
+      <div class="sub" style="margin-bottom:8px;">含所有已建立月份的資料。每加一個月份就自動累計進來。</div>
+      <div id="historyOverview"></div>
+      <details style="margin-top:14px;">
+        <summary style="cursor:pointer;color:#3182ce;font-weight:600;">📋 展開：A 帳戶 跨月明細</summary>
+        <div style="overflow-x:auto;margin-top:8px;" id="historyTblA"></div>
+      </details>
+      <details style="margin-top:8px;">
+        <summary style="cursor:pointer;color:#3182ce;font-weight:600;">📋 展開：B 帳戶 跨月明細</summary>
+        <div style="overflow-x:auto;margin-top:8px;" id="historyTblB"></div>
+      </details>
+    </div>
+
+    <!-- ABC 子分頁 -->
+    <div class="card">
+      <div class="sub-tabs">
+        <button class="sub-tab-btn active" data-acc="A">A 帳戶（每月支出）</button>
+        <button class="sub-tab-btn" data-acc="B">B 帳戶（每年支出）</button>
+        <button class="sub-tab-btn" data-acc="C">C 帳戶（理財 / 資產）</button>
+        <span class="sub-tab-chip" id="subChip">預算 0 / 已花 0 / 剩 0</span>
+      </div>
+
+      <!-- A 帳戶 -->
+      <div class="sub-panel active acc-section A" data-acc="A">
+      <div style="overflow-x:auto;">
+      <table class="tracker" id="tblA">
+        <thead>
+          <tr>
+            <th>項目</th>
+            <th class="num">預算 / 月</th>
+            <th class="num">已花費</th>
+            <th class="num">剩餘</th>
+            <th>使用率</th>
+            <th>支付方式</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+        <tfoot>
+          <tr>
+            <td>每月小計</td>
+            <td class="num" id="footA_budget">0</td>
+            <td class="num" id="footA_spent">0</td>
+            <td class="num" id="footA_left">0</td>
+            <td></td>
+            <td></td>
+            <td></td>
+          </tr>
+        </tfoot>
+      </table>
+      </div>
+      <button class="add-row" onclick="addRow('a')">+ 新增 A 項目</button>
+      <div class="payment-summary" id="paySumA"></div>
+      </div>
+
+      <!-- B 帳戶 -->
+      <div class="sub-panel acc-section B" data-acc="B">
+      <div style="overflow-x:auto;">
+      <table class="tracker" id="tblB">
+        <thead>
+          <tr>
+            <th>項目</th>
+            <th class="num">預算 / 年</th>
+            <th class="num">已花費</th>
+            <th class="num">剩餘</th>
+            <th>使用率</th>
+            <th>支付方式</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+        <tfoot>
+          <tr>
+            <td>每年小計</td>
+            <td class="num" id="footB_budget">0</td>
+            <td class="num" id="footB_spent">0</td>
+            <td class="num" id="footB_left">0</td>
+            <td></td>
+            <td></td>
+            <td></td>
+          </tr>
+        </tfoot>
+      </table>
+      </div>
+      <button class="add-row" onclick="addRow('b')">+ 新增 B 項目</button>
+      <div class="payment-summary" id="paySumB"></div>
+      </div>
+
+      <!-- C 帳戶 -->
+      <div class="sub-panel acc-section C" data-acc="C">
+      <div style="overflow-x:auto;">
+      <table class="tracker" id="tblC">
+        <thead>
+          <tr>
+            <th>項目</th>
+            <th class="num">餘額</th>
+            <th class="num">成本</th>
+            <th class="num">現價</th>
+            <th class="num">獲利率</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+        <tfoot>
+          <tr>
+            <td>合計</td>
+            <td class="num" id="footC_amount">0</td>
+            <td class="num" id="footC_cost">0</td>
+            <td class="num" id="footC_price">0</td>
+            <td class="num" id="footC_profit">-</td>
+            <td></td>
+          </tr>
+        </tfoot>
+      </table>
+      </div>
+      <button class="add-row" onclick="addRow('c')">+ 新增 C 項目</button>
+      </div>
+    </div>
+
+    <!-- 備註欄 -->
+    <div class="card">
+      <div class="notes-box">
+        <h3>📝 即時花費追蹤 備註</h3>
+        <textarea id="notes_tracker" placeholder="輸入這頁的備註、提醒事項、特殊狀況說明等..." oninput="onNoteChange('tracker', this.value)"></textarea>
+      </div>
+    </div>
+  </section>
+
+  <!-- 圖表 -->
+  <section id="panel-charts" class="panel">
+    <div class="chart-grid">
+      <div class="chart-box"><h3>A 帳戶 預算 vs 已花費</h3><canvas id="chartA"></canvas></div>
+      <div class="chart-box"><h3>B 帳戶 預算 vs 已花費</h3><canvas id="chartB"></canvas></div>
+      <div class="chart-box"><h3>A 帳戶 支出分類圓餅</h3><canvas id="chartAPie"></canvas></div>
+      <div class="chart-box"><h3>B 帳戶 支出分類圓餅</h3><canvas id="chartBPie"></canvas></div>
+      <div class="chart-box"><h3>C 帳戶 資產配置</h3><canvas id="chartC"></canvas></div>
+      <div class="chart-box"><h3>每月結餘趨勢（依目前花費推估）</h3><canvas id="chartBalance"></canvas></div>
+    </div>
+
+    <!-- 單項目跨月趨勢 -->
+    <div class="card">
+      <h2>單項目跨月趨勢</h2>
+      <div style="display:flex; gap:10px; align-items:center; margin-bottom:10px; flex-wrap:wrap;">
+        <label>選擇項目：</label>
+        <select id="trendItemSel" onchange="renderItemTrend()" style="padding:6px 12px; border:1px solid #cbd5e0; border-radius:6px; font-size:13px;"></select>
+      </div>
+      <canvas id="chartItemTrend" style="max-height:300px;"></canvas>
+      <p class="sub" style="margin-top:8px;font-size:12px;">資料來自所有歷史月份。若項目在某月不存在，視為 0。</p>
+    </div>
+
+    <!-- 備註欄 -->
+    <div class="card">
+      <div class="notes-box">
+        <h3>📝 圖表分析 備註</h3>
+        <textarea id="notes_charts" placeholder="記錄這頁的觀察、趨勢分析、決策依據..." oninput="onNoteChange('charts', this.value)"></textarea>
+      </div>
+    </div>
+  </section>
+
+  <!-- 列印總覽 -->
+  <section id="panel-summary" class="panel">
+    <div class="card">
+      <h2>列印 / PDF 總覽</h2>
+      <p class="sub">本頁面已套用列印樣式，請按右上「🖨️ 列印 / PDF」。</p>
+      <div id="summaryContent"></div>
+    </div>
+
+    <!-- 備註欄 -->
+    <div class="card">
+      <div class="notes-box">
+        <h3>📝 列印總覽 備註（會印在 PDF 上）</h3>
+        <textarea id="notes_summary" placeholder="這裡的備註內容會出現在列印的 PDF 上，例如客戶說明、會議結論、特殊提醒..." oninput="onNoteChange('summary', this.value)"></textarea>
+      </div>
+    </div>
+  </section>
+</main>
+
+<!-- Toast 通知容器 -->
+<div class="toast-container" id="toastContainer"></div>
+
+<!-- Firebase 設定 Modal -->
+<div class="modal-bg" id="modalFirebase">
+  <div class="modal">
+    <h3>⚙️ 雲端即時同步設定（選用）</h3>
+    <p style="font-size:13px;color:#4a5568;">
+      <b>目前狀態：</b><span id="fbStatus" class="firebase-pill">未啟用（使用本機儲存）</span>
+    </p>
+    <details>
+      <summary style="cursor:pointer;color:#3182ce;">📘 第一次設定步驟（點開展開）</summary>
+      <pre class="guide">
+1. 用瀏覽器到 https://console.firebase.google.com 登入 Google 帳號
+2. 點「新增專案」→ 輸入任意名稱（例：abc-tracker）→ 一直「下一步」直到完成
+3. 進入專案後，左側選「Build → Realtime Database」→「建立資料庫」
+   - 位置選「亞太區（asia-southeast1）」
+   - 安全規則暫選「以測試模式啟動」(30 天後到期，之後可調整)
+4. 回專案總覽（齒輪 → 專案設定 → 一般），下方「您的應用程式」按「&lt;/&gt;」新增 Web App
+   - 輸入暱稱，註冊應用程式
+   - 會顯示一段 firebaseConfig，例如：
+       { apiKey: "AIza...", authDomain: "...", databaseURL: "https://...firebaseio.com", ... }
+5. 把該 firebaseConfig 物件貼到下面框框（要 JSON 格式，鍵名加雙引號）
+6. 按「儲存並連線」→ 重新整理頁面，狀態變綠即代表已連線
+7. 把這個 HTML 檔（連同設定）分享給家人 / 同事，他們在自己的瀏覽器開啟、貼上同一份設定，即可多人即時同步</pre>
+    </details>
+    <p class="sub" style="margin-top:10px;">請貼上 firebaseConfig（JSON 格式）：</p>
+    <textarea id="fbConfigInput" placeholder='{"apiKey":"...","authDomain":"...","databaseURL":"https://xxx-default-rtdb.firebaseio.com","projectId":"...","storageBucket":"...","messagingSenderId":"...","appId":"..."}'></textarea>
+    <div class="actions">
+      <button onclick="clearFirebaseCfg()">清除設定</button>
+      <button onclick="closeFirebaseModal()">取消</button>
+      <button class="primary" onclick="saveFirebaseCfg()">儲存並連線</button>
+    </div>
+  </div>
+</div>
+
+<!-- Client Management Modal -->
+<div class="modal-bg" id="modalClient">
+  <div class="modal" style="max-width:780px;">
+    <h3>👥 客戶管理</h3>
+    <p style="font-size:13px;color:#4a5568;">每位客戶對應一個 GitHub 私人倉庫存放資料。切換客戶時自動上傳當前資料、再下載新客戶資料。</p>
+
+    <details style="margin-bottom:10px;">
+      <summary style="cursor:pointer;color:#3182ce;font-weight:600;">📘 新增客戶的步驟（點開展開）</summary>
+      <pre class="guide" style="white-space:pre-wrap;">
+1. 到 https://github.com/new 建立新的私人倉庫
+   名稱建議：abc-tracker-data-客戶名（例：abc-tracker-data-王小明）
+   勾選 Private、Add a README file
+2. 確保您的 Token 有訪問此新倉庫的權限：
+   到 https://github.com/settings/personal-access-tokens
+   點您現有的 token (abc-tracker) → 編輯 → Repository access
+   勾選新建立的倉庫 → Update
+3. 回到下方表單，按「＋ 新增客戶」填入：
+   客戶名稱（顯示用，例：王小明）
+   倉庫名稱（剛建立的，例：abc-tracker-data-王小明）
+   檔案路徑（保持預設 data/state.json）
+4. 按「儲存」即可
+5. 之後在頂端切換器下拉選單就能切換客戶</pre>
+    </details>
+
+    <div class="client-list" id="clientList"></div>
+
+    <h4 style="margin:14px 0 6px;font-size:14px;">＋ 新增客戶</h4>
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr auto;gap:8px;align-items:end;">
+      <div>
+        <label style="font-size:12px;color:#718096;">客戶名稱</label>
+        <input id="newClientName" type="text" placeholder="例：王小明" style="width:100%;padding:6px 10px;border:1px solid #cbd5e0;border-radius:5px;">
+      </div>
+      <div>
+        <label style="font-size:12px;color:#718096;">倉庫名稱</label>
+        <input id="newClientRepo" type="text" placeholder="例：abc-tracker-data-王小明" style="width:100%;padding:6px 10px;border:1px solid #cbd5e0;border-radius:5px;">
+      </div>
+      <div>
+        <label style="font-size:12px;color:#718096;">檔案路徑</label>
+        <input id="newClientPath" type="text" value="data/state.json" style="width:100%;padding:6px 10px;border:1px solid #cbd5e0;border-radius:5px;">
+      </div>
+      <button class="primary" style="background:#3182ce;color:#fff;border:0;padding:8px 14px;border-radius:5px;cursor:pointer;font-weight:600;" onclick="addClientFromForm()">＋ 新增</button>
+    </div>
+
+    <h4 style="margin:14px 0 6px;font-size:14px;">📦 項目模板</h4>
+    <p class="sub" style="font-size:12px;">把目前客戶的 A/B 項目組合存為模板，新增客戶後可一鍵套用，省去重打項目名稱與預算的時間。</p>
+    <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center; margin-bottom:6px;">
+      <input id="newTplName" type="text" placeholder="模板名稱（例：標準家庭預算）" style="flex:1; min-width:200px; padding:6px 10px; border:1px solid #cbd5e0; border-radius:5px;">
+      <button style="background:#48bb78;color:#fff;border:0;padding:7px 14px;border-radius:5px;cursor:pointer;font-weight:600;" onclick="saveCurrentAsTemplate()">💾 把目前 A+B 項目存為模板</button>
+    </div>
+    <div id="tplList" style="margin-top:8px;"></div>
+
+    <div class="actions">
+      <button onclick="closeClientModal()">關閉</button>
+    </div>
+  </div>
+</div>
+
+<!-- GitHub Sync Modal -->
+<div class="modal-bg" id="modalGithub">
+  <div class="modal" style="max-width:640px;">
+    <h3>🐙 GitHub 私人倉庫自動同步</h3>
+    <p style="font-size:13px;color:#4a5568;">
+      <b>目前狀態：</b><span id="ghStatus" class="firebase-pill">未啟用</span>
+    </p>
+    <details>
+      <summary style="cursor:pointer;color:#3182ce;font-weight:600;">📘 第一次設定步驟（點開展開）</summary>
+      <pre class="guide" style="white-space:pre-wrap;">
+步驟 1. 建立私人倉庫
+  ① 到 https://github.com/new
+  ② Repository name：填一個容易記的（例：abc-tracker-data）
+  ③ 選「Private」（私人）
+  ④ 勾「Add a README file」→ 按「Create repository」
+
+步驟 2. 取得 Personal Access Token（fine-grained，最安全）
+  ① 到 https://github.com/settings/personal-access-tokens/new
+  ② Token name：abc-tracker
+  ③ Expiration：選 1 年（到期後再換）
+  ④ Repository access：「Only select repositories」→ 選剛建立的倉庫
+  ⑤ Permissions → Repository permissions
+       找到「Contents」→ 改成「Read and write」
+  ⑥ 按下方「Generate token」→ 把出現的 token 複製起來
+     ⚠️ Token 只會顯示一次，請立刻貼到下面框框
+
+步驟 3. 填入下方欄位後按「儲存並連線」
+
+⚠️ 安全提醒
+  • Token 等於倉庫的鑰匙，會存在您瀏覽器 localStorage
+  • 請勿在公用電腦使用
+  • 設定 fine-grained token 只給該倉庫權限，比 classic token 安全
+  • Token 不要分享給別人</pre>
+    </details>
+    <div style="display:flex; flex-direction:column; gap:8px; margin-top:12px;">
+      <label style="font-size:13px;">擁有者（GitHub 帳號）<input id="ghOwner" type="text" placeholder="例：your-username" style="width:100%; padding:6px 10px; border:1px solid #cbd5e0; border-radius:5px; margin-top:4px;"></label>
+      <label style="font-size:13px;">倉庫名稱<input id="ghRepo" type="text" placeholder="例：abc-tracker-data" style="width:100%; padding:6px 10px; border:1px solid #cbd5e0; border-radius:5px; margin-top:4px;"></label>
+      <label style="font-size:13px;">檔案路徑（資料夾/檔名）<input id="ghPath" type="text" placeholder="例：data/state.json" value="data/state.json" style="width:100%; padding:6px 10px; border:1px solid #cbd5e0; border-radius:5px; margin-top:4px;"></label>
+      <label style="font-size:13px;">Personal Access Token<input id="ghToken" type="password" placeholder="github_pat_xxxxx" style="width:100%; padding:6px 10px; border:1px solid #cbd5e0; border-radius:5px; margin-top:4px;"></label>
+      <label style="font-size:13px;display:flex;align-items:center;gap:6px;">
+        <input id="ghAutoSync" type="checkbox" checked> 啟用自動同步（每 60 秒檢查遠端更新；本機修改 3 秒後自動上傳）
+      </label>
+    </div>
+    <div class="actions">
+      <button onclick="testGithubConn()">🧪 測試連線</button>
+      <button onclick="pullFromGithub()">⬇️ 立即拉取</button>
+      <button onclick="pushToGithub()">⬆️ 立即推送</button>
+      <button onclick="clearGithubCfg()" style="color:#c53030;">清除設定</button>
+      <button onclick="closeGithubModal()">取消</button>
+      <button class="primary" style="background:#3182ce;color:#fff;border:0;padding:6px 14px;border-radius:6px;cursor:pointer;" onclick="saveGithubCfg()">儲存並連線</button>
+    </div>
+    <pre id="ghLog" style="margin-top:10px;background:#f7fafc;padding:8px;border-radius:6px;font-size:11px;max-height:120px;overflow:auto;"></pre>
+  </div>
+</div>
+
+<!-- Backup Modal -->
+<div class="modal-bg" id="modalBackup">
+  <div class="modal" style="max-width:720px;">
+    <h3>🕓 備份歷史</h3>
+    <p class="sub" style="font-size:13px;color:#4a5568;">系統會在每次儲存、刪除、重設前自動建立快照，最多保留 30 筆。也可手動建立。</p>
+    <div style="display:flex; gap:8px; margin-bottom:10px;">
+      <button class="primary" style="background:#3182ce;color:#fff;border:0;padding:6px 14px;border-radius:6px;cursor:pointer;" onclick="manualBackup()">＋ 立即建立快照</button>
+      <button style="border:1px solid #cbd5e0;padding:6px 14px;border-radius:6px;cursor:pointer;background:#fff;" onclick="clearBackups()">清空所有備份</button>
+    </div>
+    <div id="backupList" style="max-height:50vh; overflow-y:auto;"></div>
+    <div class="actions"><button onclick="closeBackupModal()">關閉</button></div>
+  </div>
+</div>
+
+<!-- Import Modal -->
+<div class="modal-bg" id="modalImport">
+  <div class="modal">
+    <h3>📥 匯入 JSON 資料</h3>
+    <input type="file" accept=".json" id="fileImport" onchange="onFileImport(event)">
+    <textarea id="jsonImportArea" placeholder='貼上先前匯出的 JSON'></textarea>
+    <div class="actions">
+      <button onclick="closeImportModal()">取消</button>
+      <button class="primary" onclick="doImportJSON()">匯入</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ============ 初始資料（1150320） ============
+const INITIAL = {
+  monthlyIncome: 0,
+  rentIncome: 700000,
+  curMonth: new Date().toISOString().slice(0,7),
+  a: [
+    {name:"飲食(兩個月平均)",budget:44000,spent:0,details:[]},
+    {name:"房貸",budget:68590,spent:0,details:[]},
+    {name:"車貸(剩下57期)",budget:16000,spent:0,details:[]},
+    {name:"信貸",budget:62403,spent:0,details:[]},
+    {name:"手機月租費",budget:1440,spent:0,details:[]},
+    {name:"手機月租費(公務機)",budget:0,spent:0,details:[]},
+    {name:"手機月租費(小孩)2",budget:0,spent:0,details:[]},
+    {name:"手機月租費(小孩)3",budget:0,spent:0,details:[]},
+    {name:"交通費及停車費",budget:2200,spent:0,details:[]},
+    {name:"電車充電費",budget:1500,spent:0,details:[]},
+    {name:"日常雜支、生活用品",budget:8000,spent:0,details:[]},
+    {name:"子女學雜費",budget:3500,spent:0,details:[]},
+    {name:"英文家教(1,000元/1小時/1人)",budget:16800,spent:0,details:[]},
+    {name:"足球費用(到七月)",budget:4000,spent:0,details:[]},
+    {name:"交際費",budget:2000,spent:0,details:[]},
+    {name:"美髮費(深層洗髮)",budget:1800,spent:0,details:[]},
+    {name:"指甲美容",budget:1500,spent:0,details:[]},
+    {name:"訂閱費(line官方、apple)",budget:1180,spent:0,details:[]},
+    {name:"小孩零用錢-2",budget:84000,spent:0,details:[]},
+    {name:"小孩零用錢-3",budget:5000,spent:0,details:[]},
+    {name:"小孩零用錢-4",budget:5000,spent:0,details:[]},
+    {name:"照顧老三老四費用",budget:16000,spent:0,details:[]},
+    {name:"勞保",budget:5249,spent:0,details:[]},
+    {name:"健保",budget:7104,spent:0,details:[]}
+  ],
+  b: [
+    {name:"美容美髮費",budget:12000,spent:0,details:[]},
+    {name:"過年紅包費",budget:14400,spent:0,details:[]},
+    {name:"個人保費",budget:9978,spent:0,details:[]},
+    {name:"小孩保費",budget:209280,spent:0,details:[]},
+    {name:"車子保險費(明台產物)",budget:54602,spent:0,details:[]},
+    {name:"車輛維修保養費",budget:10000,spent:0,details:[]},
+    {name:"機票費用(美國)",budget:300000,spent:0,details:[]},
+    {name:"休閒旅遊費",budget:200000,spent:0,details:[]},
+    {name:"運動健身費(瑜珈)",budget:90000,spent:0,details:[]},
+    {name:"運動健身費(重訓)",budget:40000,spent:0,details:[]},
+    {name:"訂閱費Canva",budget:0,spent:0,details:[]},
+    {name:"老大480萬(分115/116年)",budget:0,spent:0,details:[]}
+  ],
+  c: [
+    {name:"儲蓄險(富邦人壽美元)20300423最後一期",amount:639840,cost:20000,price:20419},
+    {name:"儲蓄險(南山人壽美元)20260412最後一期",amount:1841028,cost:10000,price:28842},
+    {name:"國泰人壽鑫超樂享人生變額年金保險",amount:2118427,cost:10000,price:37221},
+    {name:"國泰人壽真樂享人生變額年金保險",amount:3608948,cost:10000,price:29873},
+    {name:"國泰人壽益美雙盈利變美元",amount:2227970,cost:70410,price:75900},
+    {name:"凱基人壽-保誠新百樂福終身壽險",amount:683100,cost:341988,price:1104000},
+    {name:"境外結構型商品美元100000",amount:3040751,cost:0,price:0},
+    {name:"星展-貝萊德世界科技基金A2-美元",amount:55026,cost:0,price:0},
+    {name:"緊急備用金(台灣銀行)爸爸遺產",amount:2315105,cost:0,price:0},
+    {name:"國泰世華-台幣",amount:3305620,cost:0,price:0},
+    {name:"國泰世華-外幣",amount:1753116,cost:0,price:0},
+    {name:"星展銀行",amount:247906,cost:0,price:0},
+    {name:"星展銀行-定存",amount:3487110,cost:0,price:0},
+    {name:"玉山銀行-台幣",amount:100000,cost:0,price:0},
+    {name:"玉山銀行-日幣/美金",amount:101903,cost:0,price:0},
+    {name:"永豐銀行-台幣大戶",amount:2094907,cost:0,price:0},
+    {name:"永豐銀行-敦南分行-日幣",amount:140169,cost:0,price:0},
+    {name:"永豐銀行-大戶-美金",amount:817248,cost:0,price:0},
+    {name:"台新銀行-MMR",amount:51264,cost:0,price:0},
+    {name:"台新銀行-台幣",amount:138135,cost:0,price:0},
+    {name:"台新銀行-外幣",amount:306257,cost:0,price:0},
+    {name:"元大銀行-證券戶",amount:72278,cost:0,price:0},
+    {name:"元大銀行-台幣",amount:1135,cost:0,price:0},
+    {name:"公司帳戶(澄花堂選品)",amount:833575,cost:0,price:0}
+  ]
+};
+
+const STORAGE_KEY = 'abc_1150320_tracker_v1';
+const BACKUP_KEY = 'abc_1150320_backups_v1';
+const MAX_BACKUPS = 30;
+let state = loadState();
+let chartObjs = {};
+let savingTimer = null;
+let cloudInbound = false; // 防止 firebase 回流時又寫回去造成迴圈
+let undoStack = []; // in-memory undo（最多 10 步）
+let lastBackupTs = 0; // 上次自動備份時間
+let backupTimer = null;
+
+// ============ 儲存 / 雲端 ============
+function loadState(){
+  try{
+    const s = localStorage.getItem(STORAGE_KEY);
+    if(s){
+      const obj = JSON.parse(s);
+      return mergeWithInitial(obj);
+    }
+  }catch(e){}
+  return mergeWithInitial(JSON.parse(JSON.stringify(INITIAL)));
+}
+function mergeWithInitial(obj){
+  const out = JSON.parse(JSON.stringify(INITIAL));
+  if(obj.monthlyIncome!=null) out.monthlyIncome=obj.monthlyIncome;
+  if(obj.rentIncome!=null) out.rentIncome=obj.rentIncome;
+  if(obj.curMonth) out.curMonth=obj.curMonth;
+  if(Array.isArray(obj.a)) out.a=obj.a;
+  if(Array.isArray(obj.b)) out.b=obj.b;
+  if(Array.isArray(obj.c)) out.c=obj.c;
+  if(obj.notes && typeof obj.notes==='object') out.notes = obj.notes;
+  ['a','b'].forEach(k=>out[k].forEach(it=>{ if(!Array.isArray(it.details)) it.details=[]; if(it.spent==null) it.spent=0; if(it.payment==null) it.payment=''; }));
+
+  // 處理多月份結構
+  out.months = obj.months || {};
+  // 確保 curMonth 在 months 裡有資料；若沒有，把 a/b/c 等存進去
+  if(!out.months[out.curMonth]){
+    out.months[out.curMonth] = {
+      a: out.a, b: out.b, c: out.c,
+      monthlyIncome: out.monthlyIncome, rentIncome: out.rentIncome
+    };
+  } else {
+    // 若 months 有資料，以 months 為準（覆蓋頂層）
+    const m = out.months[out.curMonth];
+    if(Array.isArray(m.a)) out.a = m.a;
+    if(Array.isArray(m.b)) out.b = m.b;
+    if(Array.isArray(m.c)) out.c = m.c;
+    if(m.monthlyIncome!=null) out.monthlyIncome = m.monthlyIncome;
+    if(m.rentIncome!=null) out.rentIncome = m.rentIncome;
+  }
+  // 讓 months[curMonth] 與頂層 a/b/c 共用同一個 reference
+  out.months[out.curMonth].a = out.a;
+  out.months[out.curMonth].b = out.b;
+  out.months[out.curMonth].c = out.c;
+  return out;
+}
+function saveState(skipCloud){
+  // 同步收入到目前月份
+  if(state.months && state.months[state.curMonth]){
+    state.months[state.curMonth].monthlyIncome = state.monthlyIncome;
+    state.months[state.curMonth].rentIncome = state.rentIncome;
+  }
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  // GitHub debounce 上傳
+  if(!skipCloud) schedulePush();
+  const now = new Date().toLocaleTimeString('zh-Hant');
+  if (window.FIREBASE_READY && !skipCloud && !cloudInbound) {
+    // debounce 雲端寫入
+    clearTimeout(savingTimer);
+    savingTimer = setTimeout(()=>{
+      window.firebaseCloud.save(state).then(()=>{
+        setSyncStatus(true,'☁️ 已同步 '+now);
+      }).catch(e=>{
+        setSyncStatus(false,'⚠️ 雲端寫入失敗：'+e.message);
+      });
+    }, 400);
+  } else {
+    setSyncStatus(window.FIREBASE_READY, (window.FIREBASE_READY?'☁️ 雲端就緒 ':'💾 本機已存 ')+now);
+  }
+}
+function setSyncStatus(online, txt){
+  const el = document.getElementById('syncStatus');
+  el.textContent = txt;
+  el.classList.toggle('online', online);
+}
+
+// 啟動 firebase 後訂閱
+document.addEventListener('firebase-ready', ()=>{
+  setSyncStatus(true,'☁️ 雲端已連線');
+  window.firebaseCloud.subscribe((remote)=>{
+    if(!remote) return;
+    cloudInbound = true;
+    state = mergeWithInitial(remote);
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    renderAll();
+    setSyncStatus(true,'☁️ 已接收雲端更新 '+new Date().toLocaleTimeString('zh-Hant'));
+    setTimeout(()=>{cloudInbound=false;}, 100);
+  });
+});
+
+// ============ 工具 ============
+function fmt(n){ if(n==null||isNaN(n)) return '-'; return Number(n).toLocaleString('zh-Hant'); }
+function fmtMoney(n){ if(n==null||isNaN(n)) return '$0'; return '$'+Number(n).toLocaleString('zh-Hant'); }
+function escAttr(s){ return String(s).replace(/"/g,'&quot;'); }
+function sumDetails(d){ return (d||[]).reduce((s,x)=>s+(+x.amount||0),0); }
+function effSpent(it){
+  // 若有明細，以明細加總優先；否則使用 spent 欄
+  const ds = sumDetails(it.details);
+  if(ds>0) return ds;
+  return +it.spent||0;
+}
+
+// ============ 渲染 ============
+function renderAll(){
+  document.getElementById('monthlyIncome').value = state.monthlyIncome||0;
+  document.getElementById('rentIncome').value = state.rentIncome||0;
+  document.getElementById('curMonth').value = state.curMonth || new Date().toISOString().slice(0,7);
+
+  renderMonthSwitcher();
+  renderBudgetTbl('a','tblA');
+  renderBudgetTbl('b','tblB');
+  renderAssetTbl('c','tblC');
+  renderSummary();
+  renderHistoryStats();
+  renderNotes();
+  alertDismissed = false;
+  checkBudgetAlert();
+  refreshTrendItemSel();
+  if(document.getElementById('panel-charts').classList.contains('active')){ renderCharts(); renderItemTrend(); }
+  if(document.getElementById('panel-summary').classList.contains('active')) renderPrintSummary();
+}
+
+function renderBudgetTbl(key, tblId){
+  const items = state[key];
+  const tbody = document.querySelector('#'+tblId+' tbody');
+  tbody.innerHTML='';
+  let totalBudget=0, totalSpent=0;
+  items.forEach((it, idx)=>{
+    const spent = effSpent(it);
+    const budget = +it.budget||0;
+    const left = budget - spent;
+    const pct = budget>0 ? Math.round(spent/budget*100) : 0;
+    totalBudget += budget; totalSpent += spent;
+    const cls = pct>100?'over':(pct>=80?'warn':'');
+    const detailsOpen = it._open;
+    const hasDetails = (it.details||[]).length>0;
+    const last = items.length-1;
+    const tr = document.createElement('tr');
+    tr.draggable = true;
+    tr.dataset.idx = idx;
+    tr.dataset.k = key;
+    const payment = it.payment || '';
+    tr.innerHTML = `
+      <td class="name">
+        <span class="drag-handle" title="拖曳調整順序">⋮⋮</span>
+        <input data-k="${key}" data-i="${idx}" data-f="name" value="${escAttr(it.name||'')}" style="width:calc(100% - 28px);">
+      </td>
+      <td class="num"><input class="num" data-k="${key}" data-i="${idx}" data-f="budget" type="number" value="${budget}"></td>
+      <td class="num">
+        <input class="num spent" data-k="${key}" data-i="${idx}" data-f="spent" type="number" value="${+it.spent||0}" ${hasDetails?'readonly title="已使用明細加總，直接編輯明細"':''}>
+      </td>
+      <td class="num ${left>=0?'bal-pos':'bal-neg'}">${fmt(left)}</td>
+      <td>
+        <span class="progress"><span class="progress-bar ${cls}" style="width:${Math.min(pct,100)}%"></span></span>
+        <span class="progress-text">${pct}%</span>
+      </td>
+      <td>
+        <select class="payment" data-k="${key}" data-i="${idx}" data-f="payment">
+          <option value="" ${payment===''?'selected':''}>—</option>
+          <option value="信用卡" ${payment==='信用卡'?'selected':''}>信用卡</option>
+          <option value="現金" ${payment==='現金'?'selected':''}>現金</option>
+          <option value="轉帳" ${payment==='轉帳'?'selected':''}>轉帳</option>
+          <option value="其他" ${payment==='其他'?'selected':''}>其他</option>
+        </select>
+      </td>
+      <td>
+        <div class="row-actions">
+          <button class="move-btn" onclick="moveRow('${key}',${idx},-1)" title="上移" ${idx===0?'disabled':''}>▲</button>
+          <button class="move-btn" onclick="moveRow('${key}',${idx},1)" title="下移" ${idx===last?'disabled':''}>▼</button>
+          <button class="add-detail-btn" onclick="toggleDetails('${key}',${idx})">${detailsOpen?'▾':'▸'} 明細(${(it.details||[]).length})</button>
+          <button class="del-btn" onclick="delRow('${key}',${idx})">✕</button>
+        </div>
+      </td>
+    `;
+    tbody.appendChild(tr);
+    if(detailsOpen){
+      const dtr = document.createElement('tr');
+      dtr.className='detail-row';
+      let html = '<td colspan="6">';
+      (it.details||[]).forEach((d, di)=>{
+        html += `<div class="detail-grid" style="margin-bottom:4px;">
+          <input type="date" data-k="${key}" data-i="${idx}" data-di="${di}" data-f="date" value="${d.date||''}">
+          <input type="number" class="num" data-k="${key}" data-i="${idx}" data-di="${di}" data-f="amount" value="${d.amount||0}" placeholder="金額">
+          <input data-k="${key}" data-i="${idx}" data-di="${di}" data-f="note" value="${escAttr(d.note||'')}" placeholder="備註（例：全聯買菜）">
+          <button class="del-btn" onclick="delDetail('${key}',${idx},${di})">✕</button>
+        </div>`;
+      });
+      html += `<button class="add-detail-btn" onclick="addDetail('${key}',${idx})">+ 新增一筆明細</button>`;
+      html += '</td>';
+      dtr.innerHTML = html;
+      tbody.appendChild(dtr);
+    }
+  });
+
+  // bind
+  tbody.querySelectorAll('input[data-f]').forEach(inp=>{
+    inp.addEventListener('input', onFieldChange);
+  });
+  tbody.querySelectorAll('select[data-f]').forEach(sel=>{
+    sel.addEventListener('change', onFieldChange);
+  });
+
+  document.getElementById('foot'+key.toUpperCase()+'_budget').textContent = fmt(totalBudget);
+  document.getElementById('foot'+key.toUpperCase()+'_spent').textContent = fmt(totalSpent);
+  document.getElementById('foot'+key.toUpperCase()+'_left').textContent = fmt(totalBudget-totalSpent);
+  // 子分頁 chip 只有目前 active 帳戶會顯示
+  updateSubChip();
+  enableDragSort(tblId);
+  renderPaymentSummary(key);
+}
+
+function renderPaymentSummary(key){
+  const el = document.getElementById('paySum'+key.toUpperCase());
+  if(!el) return;
+  const items = state[key];
+  const sums = {'信用卡':0,'現金':0,'轉帳':0,'其他':0,'未指定':0};
+  items.forEach(it=>{
+    const p = it.payment || '未指定';
+    sums[p] = (sums[p]||0) + (+it.budget||0);
+  });
+  const labels = {'信用卡':'cc','現金':'cash','轉帳':'tx','其他':'other','未指定':''};
+  el.innerHTML = '<span style="font-size:12px;color:#718096;font-weight:600;">支付方式（依預算）：</span>'
+    + Object.keys(sums).map(p=>{
+        if(sums[p]===0) return '';
+        const cls = labels[p]||'';
+        return `<span class="pay-pill ${cls}">${p === '未指定' ? '⚠️ 未指定' : p}：$${fmt(sums[p])}</span>`;
+      }).join('');
+}
+
+function updateSubChip(){
+  const chip = document.getElementById('subChip');
+  if(!chip) return;
+  const active = document.querySelector('.sub-tab-btn.active');
+  if(!active) return;
+  const k = active.dataset.acc.toLowerCase();
+  if(k==='c'){
+    const totAmt = state.c.reduce((s,x)=>s+(+x.amount||0),0);
+    chip.textContent = `總資產 ${fmt(totAmt)}`;
+  } else {
+    const items = state[k];
+    const tb = items.reduce((s,x)=>s+(+x.budget||0),0);
+    const ts = items.reduce((s,x)=>s+effSpent(x),0);
+    chip.textContent = `預算 ${fmt(tb)} / 已花 ${fmt(ts)} / 剩 ${fmt(tb-ts)}`;
+  }
+}
+
+function renderAssetTbl(key, tblId){
+  const items = state[key];
+  const tbody = document.querySelector('#'+tblId+' tbody');
+  tbody.innerHTML='';
+  let totAmt=0,totCost=0,totPrice=0;
+  items.forEach((it, idx)=>{
+    const amount=+it.amount||0, cost=+it.cost||0, price=+it.price||0;
+    totAmt+=amount; totCost+=cost; totPrice+=price;
+    const profit = (cost>0)?((price-cost)/cost*100):null;
+    const profitStr = profit==null?'-':(profit>=0?'+':'')+profit.toFixed(2)+'%';
+    const profitCls = profit==null?'':(profit>=0?'bal-pos':'bal-neg');
+    const last = items.length-1;
+    const tr = document.createElement('tr');
+    tr.draggable = true;
+    tr.dataset.idx = idx;
+    tr.dataset.k = 'c';
+    tr.innerHTML = `
+      <td class="name">
+        <span class="drag-handle" title="拖曳調整順序">⋮⋮</span>
+        <input data-k="c" data-i="${idx}" data-f="name" value="${escAttr(it.name||'')}" style="width:calc(100% - 28px);">
+      </td>
+      <td class="num"><input class="num" data-k="c" data-i="${idx}" data-f="amount" type="number" value="${amount}"></td>
+      <td class="num"><input class="num" data-k="c" data-i="${idx}" data-f="cost" type="number" value="${cost}"></td>
+      <td class="num"><input class="num" data-k="c" data-i="${idx}" data-f="price" type="number" value="${price}"></td>
+      <td class="num ${profitCls}">${profitStr}</td>
+      <td>
+        <div class="row-actions">
+          <button class="move-btn" onclick="moveRow('c',${idx},-1)" title="上移" ${idx===0?'disabled':''}>▲</button>
+          <button class="move-btn" onclick="moveRow('c',${idx},1)" title="下移" ${idx===last?'disabled':''}>▼</button>
+          <button class="del-btn" onclick="delRow('c',${idx})">✕</button>
+        </div>
+      </td>
+    `;
+    tbody.appendChild(tr);
+  });
+  tbody.querySelectorAll('input').forEach(inp=>{
+    inp.addEventListener('input', onFieldChange);
+  });
+  document.getElementById('footC_amount').textContent=fmt(totAmt);
+  document.getElementById('footC_cost').textContent=fmt(totCost);
+  document.getElementById('footC_price').textContent=fmt(totPrice);
+  const totalProfit = totCost>0?((totPrice-totCost)/totCost*100):null;
+  document.getElementById('footC_profit').textContent = totalProfit==null?'-':(totalProfit>=0?'+':'')+totalProfit.toFixed(2)+'%';
+  updateSubChip();
+  enableDragSort(tblId);
+}
+
+function renderSummary(){
+  const sumABudget = state.a.reduce((s,x)=>s+(+x.budget||0),0);
+  const sumASpent = state.a.reduce((s,x)=>s+effSpent(x),0);
+  const sumBBudget = state.b.reduce((s,x)=>s+(+x.budget||0),0);
+  const sumBSpent = state.b.reduce((s,x)=>s+effSpent(x),0);
+  const sumC = state.c.reduce((s,x)=>s+(+x.amount||0),0);
+  const salary = +state.monthlyIncome||0;
+  const rent = +state.rentIncome||0;
+  const monthIncomeTotal = salary + rent;
+  const yearIncomeTotal = monthIncomeTotal * 12;
+  const monthBBudget = sumBBudget/12;
+  const monthBSpent = sumBSpent/12;
+  const remain = monthIncomeTotal - sumASpent - monthBSpent;
+  const remainBudget = monthIncomeTotal - sumABudget - monthBBudget;
+
+  // 更新收入合計顯示
+  const mt = document.getElementById('monthTotal');
+  const yt = document.getElementById('yearTotal');
+  if(mt) mt.textContent = fmtMoney(monthIncomeTotal);
+  if(yt) yt.textContent = fmtMoney(yearIncomeTotal);
+
+  const aLeft = sumABudget - sumASpent;
+  const bLeft = sumBBudget - sumBSpent;
+  const aPct = sumABudget>0 ? Math.round(sumASpent/sumABudget*100) : 0;
+  const bPct = sumBBudget>0 ? Math.round(sumBSpent/sumBBudget*100) : 0;
+  const aCls = aPct>100?'over':(aPct>=80?'warn':'');
+  const bCls = bPct>100?'over':(bPct>=80?'warn':'');
+
+  const html = `
+    <!-- 收入卡 -->
+    <div class="group-card income">
+      <div class="gc-header">💰 收入</div>
+      <div class="gc-body">
+        <div class="gc-row"><span class="gc-lbl">月薪</span><span class="gc-val">${fmtMoney(salary)}</span></div>
+        <div class="gc-row op"><span class="gc-lbl">+ 租金（月）</span><span class="gc-val">${fmtMoney(rent)}</span></div>
+        <hr class="gc-divider">
+        <div class="gc-row total"><span class="gc-lbl">月收入合計</span><span class="gc-val">${fmtMoney(monthIncomeTotal)}</span></div>
+        <div class="gc-row op"><span class="gc-lbl">× 12 個月</span><span class="gc-val"></span></div>
+        <hr class="gc-divider">
+        <div class="gc-row total"><span class="gc-lbl">年收入合計</span><span class="gc-val" style="color:#2f855a;">${fmtMoney(yearIncomeTotal)}</span></div>
+      </div>
+    </div>
+
+    <!-- A 帳戶卡 -->
+    <div class="group-card a-acc">
+      <div class="gc-header">🔵 A 帳戶（每月支出）</div>
+      <div class="gc-body">
+        <div class="gc-row"><span class="gc-lbl">預算</span><span class="gc-val">${fmtMoney(sumABudget)}</span></div>
+        <div class="gc-row op"><span class="gc-lbl">− 已花費</span><span class="gc-val">${fmtMoney(sumASpent)}</span></div>
+        <hr class="gc-divider">
+        <div class="gc-row total highlight ${aLeft>=0?'pos':'neg'}"><span class="gc-lbl">剩餘</span><span class="gc-val">${fmtMoney(aLeft)}</span></div>
+        <div class="gc-meter"><div class="${aCls}" style="width:${Math.min(aPct,100)}%"></div></div>
+        <div class="gc-meter-text">使用率 ${aPct}%</div>
+      </div>
+    </div>
+
+    <!-- B 帳戶卡 -->
+    <div class="group-card b-acc">
+      <div class="gc-header">🟠 B 帳戶（每年支出）</div>
+      <div class="gc-body">
+        <div class="gc-row"><span class="gc-lbl">預算（年）</span><span class="gc-val">${fmtMoney(sumBBudget)}</span></div>
+        <div class="gc-row op"><span class="gc-lbl">− 已花費</span><span class="gc-val">${fmtMoney(sumBSpent)}</span></div>
+        <hr class="gc-divider">
+        <div class="gc-row total highlight ${bLeft>=0?'pos':'neg'}"><span class="gc-lbl">剩餘</span><span class="gc-val">${fmtMoney(bLeft)}</span></div>
+        <div class="gc-meter"><div class="${bCls}" style="width:${Math.min(bPct,100)}%"></div></div>
+        <div class="gc-meter-text">使用率 ${bPct}%</div>
+      </div>
+    </div>
+
+    <!-- 結餘分析 -->
+    <div class="group-card balance">
+      <div class="gc-header">📊 本月結餘分析</div>
+      <div class="gc-body">
+        <div class="gc-row"><span class="gc-lbl">月收入合計</span><span class="gc-val">${fmtMoney(monthIncomeTotal)}</span></div>
+        <div class="gc-row op"><span class="gc-lbl">− A 實際花費</span><span class="gc-val">${fmtMoney(sumASpent)}</span></div>
+        <div class="gc-row op"><span class="gc-lbl">− B 月攤提（實際）</span><span class="gc-val">${fmtMoney(Math.round(monthBSpent))}</span></div>
+        <hr class="gc-divider">
+        <div class="gc-row total highlight ${remain>=0?'pos':'neg'}"><span class="gc-lbl">實際結餘</span><span class="gc-val">${fmtMoney(Math.round(remain))}</span></div>
+        <hr class="gc-divider">
+        <div class="gc-row op"><span class="gc-lbl">理論結餘（依預算）</span><span class="gc-val ${remainBudget>=0?'':'neg'}" style="color:${remainBudget>=0?'#2f855a':'#c53030'}">${fmtMoney(Math.round(remainBudget))}</span></div>
+      </div>
+    </div>
+
+    <!-- C 帳戶 -->
+    <div class="group-card c-acc">
+      <div class="gc-header">🟢 C 帳戶（理財 / 資產）</div>
+      <div class="gc-body">
+        <div class="gc-row"><span class="gc-lbl">資產項目數</span><span class="gc-val">${state.c.length}</span></div>
+        <hr class="gc-divider">
+        <div class="gc-row total highlight pos"><span class="gc-lbl">總資產</span><span class="gc-val">${fmtMoney(sumC)}</span></div>
+      </div>
+    </div>
+  `;
+  document.getElementById('summaryGrid').innerHTML = html;
+}
+
+// ============ 事件 ============
+function onFieldChange(e){
+  const k=e.target.dataset.k, i=+e.target.dataset.i, f=e.target.dataset.f;
+  const di=e.target.dataset.di;
+  let v=e.target.value;
+  // 字串類型欄位保持原值，其他欄位轉數字
+  const stringFields = ['name','note','date','payment'];
+  if(!stringFields.includes(f)) v = v===''?0:parseFloat(v);
+  if(di!=null){
+    if(!Array.isArray(state[k][i].details)) state[k][i].details=[];
+    state[k][i].details[+di][f]=v;
+  } else {
+    state[k][i][f]=v;
+  }
+  // 不整張表重繪，只更新當列剩餘/進度條 + footer + summary
+  if(k==='a' || k==='b'){
+    updateRowDisplay(k, i);
+    updateBudgetFooter(k);
+    renderPaymentSummary(k);
+    // 重新評估警示（解除已關閉狀態，因為資料變了）
+    if(f==='spent' || f==='budget'){
+      alertDismissed = false;
+      checkBudgetAlert();
+    }
+  } else if(k==='c'){
+    updateAssetRow(i);
+    updateAssetFooter();
+  }
+  renderSummary();
+  // 跨月統計用 debounce 重算（避免每按一鍵就重畫）
+  clearTimeout(window._histTimer);
+  window._histTimer = setTimeout(renderHistoryStats, 300);
+  saveState();
+}
+
+// 只更新單列的「剩餘 / 進度條」（避免重繪整張表造成輸入失焦）
+function updateRowDisplay(k, i){
+  const tbl = document.getElementById(k==='a'?'tblA':'tblB');
+  if(!tbl) return;
+  // 找到「非 detail-row」中對應的列（第 i 個 tr）
+  const rows = [...tbl.querySelectorAll('tbody > tr')].filter(r=>!r.classList.contains('detail-row'));
+  const tr = rows[i];
+  if(!tr) return;
+  const it = state[k][i];
+  const spent = effSpent(it);
+  const budget = +it.budget||0;
+  const left = budget - spent;
+  const pct = budget>0 ? Math.round(spent/budget*100) : 0;
+  const cls = pct>100?'over':(pct>=80?'warn':'');
+  // 第 4 欄: 剩餘
+  const tdLeft = tr.children[3];
+  tdLeft.className = 'num ' + (left>=0?'bal-pos':'bal-neg');
+  tdLeft.textContent = fmt(left);
+  // 第 5 欄: 使用率
+  const tdPct = tr.children[4];
+  tdPct.innerHTML = `<span class="progress"><span class="progress-bar ${cls}" style="width:${Math.min(pct,100)}%"></span></span><span class="progress-text">${pct}%</span>`;
+  // 如果是明細 row 在後面，且有明細加總，要把「已花費」輸入框的顯示同步（只讀加總值）
+  if((it.details||[]).length>0){
+    const spentInput = tr.querySelector('input.spent');
+    if(spentInput){ spentInput.value = spent; spentInput.setAttribute('readonly','readonly'); spentInput.title='已使用明細加總，直接編輯明細'; }
+  }
+}
+
+function updateBudgetFooter(k){
+  const items = state[k];
+  let tb=0, ts=0;
+  items.forEach(it=>{ tb+=(+it.budget||0); ts+=effSpent(it); });
+  document.getElementById('foot'+k.toUpperCase()+'_budget').textContent = fmt(tb);
+  document.getElementById('foot'+k.toUpperCase()+'_spent').textContent = fmt(ts);
+  document.getElementById('foot'+k.toUpperCase()+'_left').textContent = fmt(tb-ts);
+  updateSubChip();
+}
+
+function updateAssetRow(i){
+  const tbl = document.getElementById('tblC');
+  if(!tbl) return;
+  const rows = [...tbl.querySelectorAll('tbody > tr')];
+  const tr = rows[i];
+  if(!tr) return;
+  const it = state.c[i];
+  const cost = +it.cost||0, price = +it.price||0;
+  const profit = cost>0?((price-cost)/cost*100):null;
+  const profitStr = profit==null?'-':(profit>=0?'+':'')+profit.toFixed(2)+'%';
+  const td = tr.children[4];
+  td.className = 'num ' + (profit==null?'':(profit>=0?'bal-pos':'bal-neg'));
+  td.textContent = profitStr;
+}
+
+function updateAssetFooter(){
+  let amt=0,cost=0,price=0;
+  state.c.forEach(x=>{ amt+=(+x.amount||0); cost+=(+x.cost||0); price+=(+x.price||0); });
+  document.getElementById('footC_amount').textContent=fmt(amt);
+  document.getElementById('footC_cost').textContent=fmt(cost);
+  document.getElementById('footC_price').textContent=fmt(price);
+  const p = cost>0?((price-cost)/cost*100):null;
+  document.getElementById('footC_profit').textContent = p==null?'-':(p>=0?'+':'')+p.toFixed(2)+'%';
+  updateSubChip();
+}
+function onIncomeChange(){
+  state.monthlyIncome = +document.getElementById('monthlyIncome').value||0;
+  state.rentIncome = +document.getElementById('rentIncome').value||0;
+  renderSummary(); saveState(); renderHistoryStats();
+}
+// 當月份 input 變動 → 切換到該月份
+document.getElementById('curMonth').addEventListener('change', e=>{
+  const m = e.target.value;
+  if(!m) return;
+  switchMonth(m);
+});
+
+// ============ 月份管理 ============
+function nextMonthStr(s){
+  if(!s||!/^\d{4}-\d{2}$/.test(s)) s = new Date().toISOString().slice(0,7);
+  let [y,m] = s.split('-').map(Number);
+  m++; if(m>12){ m=1; y++; }
+  return y+'-'+String(m).padStart(2,'0');
+}
+
+function switchMonth(m){
+  if(!m) return;
+  if(m === state.curMonth) return;
+  // 確保目前的 a/b/c 已經存在 months
+  if(!state.months) state.months={};
+  state.months[state.curMonth] = state.months[state.curMonth] || {
+    a:state.a,b:state.b,c:state.c,
+    monthlyIncome:state.monthlyIncome,rentIncome:state.rentIncome
+  };
+  // 切換
+  if(!state.months[m]){
+    // 該月份還沒有 → 複製當前月（含預算與項目，重設花費）
+    const src = state.months[state.curMonth];
+    const newM = JSON.parse(JSON.stringify({
+      a:src.a, b:src.b, c:src.c,
+      monthlyIncome:src.monthlyIncome, rentIncome:src.rentIncome
+    }));
+    newM.a.forEach(it=>{ it.spent=0; it.details=[]; });
+    newM.b.forEach(it=>{ it.spent=0; it.details=[]; });
+    state.months[m] = newM;
+  }
+  state.curMonth = m;
+  const d = state.months[m];
+  state.a = d.a; state.b = d.b; state.c = d.c;
+  state.monthlyIncome = d.monthlyIncome; state.rentIncome = d.rentIncome;
+  renderAll(); saveState();
+}
+
+function addNextMonth(){
+  const next = nextMonthStr(state.curMonth);
+  if(state.months[next]){
+    if(!confirm(next+' 月份已存在，要切換過去嗎？')){ return; }
+  }
+  switchMonth(next);
+}
+
+function addNextMonthBlank(){
+  const next = nextMonthStr(state.curMonth);
+  if(state.months[next]){ if(!confirm(next+' 已存在，覆蓋成空白？')) return; }
+  // 建立空白（保留項目名稱與預算結構，但全部數值歸零）
+  const src = state.months[state.curMonth];
+  const blankM = {
+    a: src.a.map(it=>({name:it.name, budget:0, spent:0, details:[]})),
+    b: src.b.map(it=>({name:it.name, budget:0, spent:0, details:[]})),
+    c: src.c.map(it=>({name:it.name, amount:0, cost:0, price:0})),
+    monthlyIncome: 0, rentIncome: 0
+  };
+  state.months[next] = blankM;
+  switchMonth(next);
+}
+
+function deleteCurMonth(){
+  const keys = Object.keys(state.months);
+  if(keys.length<=1){ alert('至少要保留一個月份的資料'); return; }
+  if(!confirm('刪除 '+state.curMonth+' 月份的全部資料？\n(系統會先自動建立備份，可從「🕓 備份歷史」還原)')) return;
+  pushUndo(); createBackup('刪除月份 '+state.curMonth+' 前');
+  delete state.months[state.curMonth];
+  // 切到剩下最近的月份
+  const remain = Object.keys(state.months).sort();
+  state.curMonth = remain[remain.length-1];
+  const d = state.months[state.curMonth];
+  state.a = d.a; state.b = d.b; state.c = d.c;
+  state.monthlyIncome = d.monthlyIncome; state.rentIncome = d.rentIncome;
+  renderAll(); saveState();
+}
+
+function renderMonthSwitcher(){
+  const sel = document.getElementById('monthSwitcher');
+  if(!sel) return;
+  const months = Object.keys(state.months||{}).sort();
+  sel.innerHTML = months.map(m=>`<option value="${m}" ${m===state.curMonth?'selected':''}>${m}${m===state.curMonth?' (目前)':''}</option>`).join('');
+}
+
+// ============ 跨月份統計 ============
+function renderHistoryStats(){
+  const months = Object.keys(state.months||{}).sort();
+  if(months.length===0){
+    document.getElementById('historyOverview').innerHTML = '<p class="sub">尚無歷史資料</p>';
+    return;
+  }
+  // 每月加總
+  const perMonth = months.map(m=>{
+    const d = state.months[m];
+    const aBudget = (d.a||[]).reduce((s,x)=>s+(+x.budget||0),0);
+    const aSpent  = (d.a||[]).reduce((s,x)=>s+effSpent(x),0);
+    const bBudget = (d.b||[]).reduce((s,x)=>s+(+x.budget||0),0);
+    const bSpent  = (d.b||[]).reduce((s,x)=>s+effSpent(x),0);
+    const income  = (+d.monthlyIncome||0)+(+d.rentIncome||0);
+    const remain  = income - aSpent - bSpent/12;
+    return {m, income, aBudget, aSpent, bBudget, bSpent, remain};
+  });
+  const n = perMonth.length;
+  const totIncome = perMonth.reduce((s,x)=>s+x.income,0);
+  const totASpent = perMonth.reduce((s,x)=>s+x.aSpent,0);
+  const totBSpent = perMonth.reduce((s,x)=>s+x.bSpent,0);
+  const totRemain = perMonth.reduce((s,x)=>s+x.remain,0);
+  // 概覽表
+  let html = `<div style="overflow-x:auto;"><table class="history">
+    <thead><tr>
+      <th>月份</th>
+      <th>月收入</th>
+      <th class="acc-a">A 預算</th>
+      <th class="acc-a">A 已花</th>
+      <th class="acc-b">B 預算</th>
+      <th class="acc-b">B 已花</th>
+      <th>實際結餘</th>
+    </tr></thead><tbody>`;
+  perMonth.forEach(r=>{
+    const isCur = r.m===state.curMonth;
+    html += `<tr ${isCur?'style="background:#fffbeb;"':''}>
+      <td class="name">${r.m}${isCur?' ⭐':''}</td>
+      <td>${fmt(r.income)}</td>
+      <td>${fmt(r.aBudget)}</td>
+      <td>${fmt(r.aSpent)}</td>
+      <td>${fmt(r.bBudget)}</td>
+      <td>${fmt(r.bSpent)}</td>
+      <td style="color:${r.remain>=0?'#2f855a':'#c53030'};font-weight:700;">${fmt(Math.round(r.remain))}</td>
+    </tr>`;
+  });
+  html += `<tr><td class="name total-col">合計（${n}個月）</td>
+    <td class="total-col">${fmt(totIncome)}</td>
+    <td class="total-col">-</td>
+    <td class="total-col">${fmt(totASpent)}</td>
+    <td class="total-col">-</td>
+    <td class="total-col">${fmt(totBSpent)}</td>
+    <td class="total-col" style="color:${totRemain>=0?'#2f855a':'#c53030'};">${fmt(Math.round(totRemain))}</td>
+  </tr>
+  <tr><td class="name avg-col">月平均</td>
+    <td class="avg-col">${fmt(Math.round(totIncome/n))}</td>
+    <td class="avg-col">-</td>
+    <td class="avg-col">${fmt(Math.round(totASpent/n))}</td>
+    <td class="avg-col">-</td>
+    <td class="avg-col">${fmt(Math.round(totBSpent/n))}</td>
+    <td class="avg-col" style="color:${totRemain/n>=0?'#2f855a':'#c53030'};">${fmt(Math.round(totRemain/n))}</td>
+  </tr>
+  </tbody></table></div>`;
+  document.getElementById('historyOverview').innerHTML = html;
+
+  // 跨月明細：以「目前月份的 A 項目」為主名單，去找各月份對應名稱的花費
+  function buildItemTbl(key){
+    const items = state[key];
+    if(!items.length) return '<p class="sub">無項目</p>';
+    let h = '<table class="history"><thead><tr><th>項目</th><th>預算</th>';
+    months.forEach(m=>{ h+=`<th${m===state.curMonth?' style="background:#d69e2e;"':''}>${m}</th>`; });
+    h += '<th class="total-col">累計</th><th class="avg-col">月平均</th></tr></thead><tbody>';
+    items.forEach(it=>{
+      h += `<tr><td class="name">${it.name}</td><td>${fmt(+it.budget||0)}</td>`;
+      let tot=0;
+      months.forEach(m=>{
+        const md = state.months[m];
+        const match = (md[key]||[]).find(x=>x.name===it.name);
+        const sp = match ? effSpent(match) : 0;
+        tot += sp;
+        h += `<td>${fmt(sp)}</td>`;
+      });
+      h += `<td class="total-col">${fmt(tot)}</td><td class="avg-col">${fmt(Math.round(tot/n))}</td></tr>`;
+    });
+    h += '</tbody></table>';
+    return h;
+  }
+  document.getElementById('historyTblA').innerHTML = buildItemTbl('a');
+  document.getElementById('historyTblB').innerHTML = buildItemTbl('b');
+}
+
+function addRow(k){
+  if(k==='c') state.c.push({name:'新項目',amount:0,cost:0,price:0});
+  else state[k].push({name:'新項目',budget:0,spent:0,details:[]});
+  renderAll(); saveState();
+}
+function delRow(k,i){
+  if(!confirm('刪除這一列？')) return;
+  pushUndo(); createBackup('刪除項目前');
+  state[k].splice(i,1);
+  renderAll(); saveState();
+}
+function moveRow(k, i, dir){
+  const arr = state[k];
+  const j = i + dir;
+  if(j<0 || j>=arr.length) return;
+  [arr[i], arr[j]] = [arr[j], arr[i]];
+  // 重繪當前帳戶
+  if(k==='a') renderBudgetTbl('a','tblA');
+  else if(k==='b') renderBudgetTbl('b','tblB');
+  else renderAssetTbl('c','tblC');
+  renderSummary(); saveState();
+}
+
+// ============ 拖曳排序 ============
+let dragSrc = null;
+function enableDragSort(tblId){
+  const tbl = document.getElementById(tblId);
+  if(!tbl) return;
+  tbl.querySelectorAll('tbody > tr[draggable]').forEach(tr=>{
+    tr.addEventListener('dragstart', e=>{
+      dragSrc = tr;
+      tr.classList.add('dragging');
+      e.dataTransfer.effectAllowed = 'move';
+      e.dataTransfer.setData('text/plain', tr.dataset.idx);
+    });
+    tr.addEventListener('dragend', ()=>{
+      tr.classList.remove('dragging');
+      tbl.querySelectorAll('tr.drag-over').forEach(x=>x.classList.remove('drag-over'));
+      dragSrc = null;
+    });
+    tr.addEventListener('dragover', e=>{
+      if(!dragSrc || dragSrc===tr) return;
+      if(dragSrc.dataset.k !== tr.dataset.k) return;
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'move';
+      tbl.querySelectorAll('tr.drag-over').forEach(x=>x.classList.remove('drag-over'));
+      tr.classList.add('drag-over');
+    });
+    tr.addEventListener('drop', e=>{
+      e.preventDefault();
+      if(!dragSrc || dragSrc===tr) return;
+      const k = tr.dataset.k;
+      const from = +dragSrc.dataset.idx;
+      const to = +tr.dataset.idx;
+      const arr = state[k];
+      const [moved] = arr.splice(from, 1);
+      arr.splice(to, 0, moved);
+      if(k==='a') renderBudgetTbl('a','tblA');
+      else if(k==='b') renderBudgetTbl('b','tblB');
+      else renderAssetTbl('c','tblC');
+      renderSummary(); saveState();
+    });
+  });
+}
+function toggleDetails(k,i){
+  state[k][i]._open = !state[k][i]._open;
+  if(k==='a') renderBudgetTbl('a','tblA');
+  else renderBudgetTbl('b','tblB');
+}
+function addDetail(k,i){
+  if(!Array.isArray(state[k][i].details)) state[k][i].details=[];
+  state[k][i].details.push({date:new Date().toISOString().slice(0,10),amount:0,note:''});
+  state[k][i]._open = true;
+  renderBudgetTbl(k, k==='a'?'tblA':'tblB');
+  renderSummary(); saveState();
+}
+function delDetail(k,i,di){
+  pushUndo();
+  state[k][i].details.splice(di,1);
+  renderBudgetTbl(k, k==='a'?'tblA':'tblB');
+  renderSummary(); saveState();
+}
+function resetSpending(k){
+  if(!confirm('將 '+k.toUpperCase()+' 帳戶所有「已花費」與「明細」歸零（保留預算與項目）。確定？\n(系統會先自動建立備份)')) return;
+  pushUndo(); createBackup('重設 '+k.toUpperCase()+' 帳戶花費前');
+  state[k].forEach(it=>{ it.spent=0; it.details=[]; });
+  renderAll(); saveState();
+}
+function resetAll(){
+  if(!confirm('將清除所有資料回到 Excel 原始 1150320 預算。確定？\n(系統會先自動建立備份，事後可從「🕓 備份歷史」還原)')) return;
+  createBackup('重設前自動備份');
+  localStorage.removeItem(STORAGE_KEY);
+  state = mergeWithInitial(JSON.parse(JSON.stringify(INITIAL)));
+  renderAll(); saveState();
+}
+
+// ============ 備份 / 復原系統 ============
+function loadBackups(){
+  try{
+    const s = localStorage.getItem(BACKUP_KEY);
+    if(s) return JSON.parse(s);
+  }catch(e){}
+  return [];
+}
+function saveBackups(arr){
+  // 限制數量
+  while(arr.length>MAX_BACKUPS) arr.shift();
+  try{
+    localStorage.setItem(BACKUP_KEY, JSON.stringify(arr));
+  }catch(e){
+    // 容量超限 → 砍一半重試
+    arr = arr.slice(Math.floor(arr.length/2));
+    try{ localStorage.setItem(BACKUP_KEY, JSON.stringify(arr)); }catch(e2){}
+  }
+}
+function createBackup(label){
+  const arr = loadBackups();
+  const snap = {
+    ts: Date.now(),
+    label: label || '自動備份',
+    state: JSON.parse(JSON.stringify(state))
+  };
+  // 若上一筆內容相同（避免每按一鍵都存一筆），略過
+  if(arr.length>0){
+    const lastStr = JSON.stringify(arr[arr.length-1].state);
+    if(lastStr === JSON.stringify(snap.state)) return;
+  }
+  arr.push(snap);
+  saveBackups(arr);
+  lastBackupTs = snap.ts;
+}
+function manualBackup(){
+  createBackup('手動快照');
+  renderBackupList();
+  alert('快照已建立');
+}
+function clearBackups(){
+  if(!confirm('清空所有備份？此動作無法復原。')) return;
+  localStorage.removeItem(BACKUP_KEY);
+  renderBackupList();
+}
+function restoreBackup(idx){
+  const arr = loadBackups();
+  if(!arr[idx]) return;
+  if(!confirm('將套用 '+new Date(arr[idx].ts).toLocaleString('zh-Hant')+' 的備份\n（'+arr[idx].label+'）\n\n目前資料會先自動備份起來。確定？')) return;
+  createBackup('還原前自動備份');
+  state = mergeWithInitial(arr[idx].state);
+  renderAll(); saveState();
+  closeBackupModal();
+  alert('已還原至：'+new Date(arr[idx].ts).toLocaleString('zh-Hant'));
+}
+function deleteBackup(idx){
+  if(!confirm('刪除此筆備份？')) return;
+  const arr = loadBackups();
+  arr.splice(idx,1);
+  saveBackups(arr);
+  renderBackupList();
+}
+
+// ============ Undo (in-memory) ============
+function pushUndo(){
+  undoStack.push(JSON.stringify(state));
+  if(undoStack.length>10) undoStack.shift();
+}
+function undoLast(){
+  if(undoStack.length===0){
+    if(!confirm('目前沒有可復原的操作。\n要打開「備份歷史」看看更早的快照嗎？')) return;
+    openBackupModal();
+    return;
+  }
+  const prev = undoStack.pop();
+  if(!prev) return;
+  createBackup('Undo 前自動備份');
+  state = mergeWithInitial(JSON.parse(prev));
+  renderAll(); saveState();
+  setSyncStatus(window.FIREBASE_READY,'↶ 已復原一步');
+}
+
+// ============ 備份 Modal ============
+function openBackupModal(){
+  renderBackupList();
+  document.getElementById('modalBackup').classList.add('open');
+}
+function closeBackupModal(){ document.getElementById('modalBackup').classList.remove('open'); }
+
+function renderBackupList(){
+  const arr = loadBackups();
+  const list = document.getElementById('backupList');
+  if(arr.length===0){
+    list.innerHTML = '<p style="color:#a0aec0;padding:14px;text-align:center;">尚無備份</p>';
+    return;
+  }
+  // 倒序顯示（最近的在最上）
+  let html = '<table class="history" style="font-size:13px;"><thead><tr><th style="text-align:left;">時間</th><th style="text-align:left;">說明</th><th>月份數</th><th>A 項目</th><th>B 項目</th><th>C 項目</th><th>操作</th></tr></thead><tbody>';
+  for(let i=arr.length-1; i>=0; i--){
+    const b = arr[i];
+    const s = b.state||{};
+    const mCount = Object.keys(s.months||{}).length;
+    const aLen = (s.a||[]).length;
+    const bLen = (s.b||[]).length;
+    const cLen = (s.c||[]).length;
+    html += `<tr>
+      <td style="text-align:left;">${new Date(b.ts).toLocaleString('zh-Hant')}</td>
+      <td style="text-align:left;">${b.label||''}</td>
+      <td>${mCount}</td>
+      <td>${aLen}</td>
+      <td>${bLen}</td>
+      <td>${cLen}</td>
+      <td style="text-align:left;white-space:nowrap;">
+        <button style="background:#48bb78;color:#fff;border:0;border-radius:4px;padding:4px 10px;cursor:pointer;font-size:12px;" onclick="restoreBackup(${i})">還原</button>
+        <button style="background:#fed7d7;color:#c53030;border:0;border-radius:4px;padding:4px 10px;cursor:pointer;font-size:12px;" onclick="deleteBackup(${i})">✕</button>
+      </td>
+    </tr>`;
+  }
+  html += '</tbody></table>';
+  list.innerHTML = html;
+}
+
+// ============ Tabs ============
+document.querySelectorAll('.tab-btn').forEach(b=>{
+  b.addEventListener('click',()=>{
+    document.querySelectorAll('.tab-btn').forEach(x=>x.classList.remove('active'));
+    document.querySelectorAll('.panel').forEach(x=>x.classList.remove('active'));
+    b.classList.add('active');
+    document.getElementById('panel-'+b.dataset.tab).classList.add('active');
+    if(b.dataset.tab==='charts') renderCharts();
+    if(b.dataset.tab==='summary') renderPrintSummary();
+  });
+});
+
+// ============ Sub-tabs (ABC) ============
+document.querySelectorAll('.sub-tab-btn').forEach(b=>{
+  b.addEventListener('click',()=>{
+    const acc = b.dataset.acc;
+    document.querySelectorAll('.sub-tab-btn').forEach(x=>x.classList.remove('active'));
+    document.querySelectorAll('.sub-panel').forEach(x=>x.classList.remove('active'));
+    b.classList.add('active');
+    document.querySelector('.sub-panel[data-acc="'+acc+'"]').classList.add('active');
+    updateSubChip();
+  });
+});
+
+// ============ Charts ============
+function renderCharts(){
+  Object.values(chartObjs).forEach(c=>c.destroy());
+  chartObjs={};
+  const COLORS=['#3182ce','#dd6b20','#38a169','#805ad5','#d53f8c','#319795','#e53e3e','#d69e2e','#4299e1','#48bb78','#9f7aea','#ed64a6','#0bc5ea','#f56565','#ecc94b','#68d391','#b794f4','#fc8181','#4fd1c5','#f6ad55','#a0aec0','#feb2b2','#fbd38d','#9ae6b4','#90cdf4'];
+
+  function budgetVsSpent(items, canvasId){
+    const labels = items.map(x=>x.name);
+    const budget = items.map(x=>+x.budget||0);
+    const spent  = items.map(x=>effSpent(x));
+    return new Chart(document.getElementById(canvasId),{
+      type:'bar', data:{labels, datasets:[
+        {label:'預算',data:budget,backgroundColor:'rgba(49,130,206,.6)'},
+        {label:'已花費',data:spent,backgroundColor:'rgba(221,107,32,.8)'}
+      ]}, options:{responsive:true, indexAxis:'y', plugins:{legend:{position:'bottom'}}, scales:{x:{ticks:{font:{size:10}}}}}
+    });
+  }
+  chartObjs.a = budgetVsSpent(state.a,'chartA');
+  chartObjs.b = budgetVsSpent(state.b,'chartB');
+
+  function pie(items, canvasId, useField='budget'){
+    const filt = items.filter(x=>(+x[useField])>0);
+    return new Chart(document.getElementById(canvasId),{
+      type:'doughnut', data:{labels:filt.map(x=>x.name), datasets:[{data:filt.map(x=>+x[useField]||0),backgroundColor:COLORS}]},
+      options:{responsive:true, plugins:{legend:{position:'right',labels:{font:{size:10}}}}}
+    });
+  }
+  chartObjs.apie = pie(state.a,'chartAPie','budget');
+  chartObjs.bpie = pie(state.b,'chartBPie','budget');
+  chartObjs.c = pie(state.c,'chartC','amount');
+
+  // 餘額趨勢（依目前花費比例推估剩餘月份）
+  const income = +state.monthlyIncome||0;
+  const monthBBudget = state.b.reduce((s,x)=>s+(+x.budget||0),0)/12;
+  const monthlyBalanceIfFollow = income - state.a.reduce((s,x)=>s+(+x.budget||0),0) - monthBBudget;
+  const aSpentTotal = state.a.reduce((s,x)=>s+effSpent(x),0);
+  const bSpentTotal = state.b.reduce((s,x)=>s+effSpent(x),0);
+  const actualThisMonth = income - aSpentTotal - bSpentTotal/12;
+  chartObjs.bal = new Chart(document.getElementById('chartBalance'),{
+    type:'bar', data:{labels:['預算理論結餘','實際結餘'], datasets:[{
+      data:[Math.round(monthlyBalanceIfFollow), Math.round(actualThisMonth)],
+      backgroundColor:['rgba(49,130,206,.7)','rgba(56,161,105,.8)']
+    }]}, options:{responsive:true, plugins:{legend:{display:false}}}
+  });
+}
+
+// ============ Print Summary ============
+function renderPrintSummary(){
+  const sumABudget = state.a.reduce((s,x)=>s+(+x.budget||0),0);
+  const sumASpent = state.a.reduce((s,x)=>s+effSpent(x),0);
+  const sumBBudget = state.b.reduce((s,x)=>s+(+x.budget||0),0);
+  const sumBSpent = state.b.reduce((s,x)=>s+effSpent(x),0);
+  const sumC = state.c.reduce((s,x)=>s+(+x.amount||0),0);
+  const income = +state.monthlyIncome||0;
+  const balance = income - sumASpent - sumBSpent/12;
+  let html = `
+    <h3>${state.curMonth||''} 月份摘要</h3>
+    <table class="tracker">
+      <tr><th>項目</th><th class="num">金額</th></tr>
+      <tr><td>實領月收入</td><td class="num">${fmtMoney(income)}</td></tr>
+      <tr><td>A 帳戶 預算</td><td class="num">${fmtMoney(sumABudget)}</td></tr>
+      <tr><td>A 帳戶 已花費</td><td class="num">${fmtMoney(sumASpent)}</td></tr>
+      <tr><td>B 帳戶 預算（年）</td><td class="num">${fmtMoney(sumBBudget)}</td></tr>
+      <tr><td>B 帳戶 已花費（年）</td><td class="num">${fmtMoney(sumBSpent)}</td></tr>
+      <tr><td><b>本月實際結餘</b></td><td class="num" style="color:${balance>=0?'#2f855a':'#c53030'}"><b>${fmtMoney(Math.round(balance))}</b></td></tr>
+      <tr><td>C 帳戶 總資產</td><td class="num">${fmtMoney(sumC)}</td></tr>
+    </table>
+    <h3 style="margin-top:18px;">A 帳戶 明細</h3>
+    <table class="tracker">
+      <thead><tr><th>項目</th><th class="num">預算</th><th class="num">已花</th><th class="num">剩餘</th></tr></thead>
+      <tbody>
+        ${state.a.map(it=>{
+          const s=effSpent(it); const b=+it.budget||0;
+          return `<tr><td>${it.name}</td><td class="num">${fmt(b)}</td><td class="num">${fmt(s)}</td><td class="num" style="color:${b-s>=0?'#2f855a':'#c53030'}">${fmt(b-s)}</td></tr>`;
+        }).join('')}
+      </tbody>
+    </table>
+    <h3 style="margin-top:18px;">B 帳戶 明細</h3>
+    <table class="tracker">
+      <thead><tr><th>項目</th><th class="num">預算</th><th class="num">已花</th><th class="num">剩餘</th></tr></thead>
+      <tbody>
+        ${state.b.map(it=>{
+          const s=effSpent(it); const b=+it.budget||0;
+          return `<tr><td>${it.name}</td><td class="num">${fmt(b)}</td><td class="num">${fmt(s)}</td><td class="num" style="color:${b-s>=0?'#2f855a':'#c53030'}">${fmt(b-s)}</td></tr>`;
+        }).join('')}
+      </tbody>
+    </table>
+  `;
+  // 加入備註內容到列印版
+  const noteSummary = (state.notes && state.notes.summary)||'';
+  const noteTracker = (state.notes && state.notes.tracker)||'';
+  if(noteSummary || noteTracker){
+    html += '<h3 style="margin-top:18px;">備註</h3>';
+    if(noteSummary) html += '<div style="background:#fffbeb;border:1px solid #fbd38d;padding:10px;border-radius:6px;margin-bottom:8px;white-space:pre-wrap;font-size:12px;">'+noteSummary.replace(/</g,'&lt;')+'</div>';
+    if(noteTracker) html += '<div style="background:#f7fafc;border:1px solid #e2e8f0;padding:10px;border-radius:6px;white-space:pre-wrap;font-size:12px;"><b>追蹤頁備註：</b><br>'+noteTracker.replace(/</g,'&lt;')+'</div>';
+  }
+  document.getElementById('summaryContent').innerHTML = html;
+}
+
+// ============ 匯入 / 匯出 ============
+function exportJSON(){
+  const blob = new Blob([JSON.stringify(state,null,2)],{type:'application/json'});
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(blob);
+  a.download='ABC_1150320_'+new Date().toISOString().slice(0,10)+'.json';
+  a.click();
+}
+function importJSON(){ document.getElementById('modalImport').classList.add('open'); }
+function closeImportModal(){ document.getElementById('modalImport').classList.remove('open'); }
+function doImportJSON(){
+  try{
+    const txt = document.getElementById('jsonImportArea').value.trim();
+    if(!txt){ alert('請貼上 JSON 內容或選擇檔案'); return; }
+    const obj = JSON.parse(txt);
+    createBackup('匯入 JSON 前自動備份');
+    state = mergeWithInitial(obj);
+    renderAll(); saveState(); closeImportModal();
+    alert('匯入成功！（舊資料已自動備份）');
+  }catch(e){ alert('JSON 解析失敗：'+e.message); }
+}
+function onFileImport(ev){
+  const f = ev.target.files[0]; if(!f) return;
+  const reader = new FileReader();
+  reader.onload=e=>{ document.getElementById('jsonImportArea').value=e.target.result; };
+  reader.readAsText(f);
+}
+function exportExcel(){
+  const wb = XLSX.utils.book_new();
+  // A
+  const aRows = [['A 帳戶（每月）'],['項目','預算/月','已花費','剩餘','使用率']];
+  state.a.forEach(it=>{
+    const s=effSpent(it),b=+it.budget||0;
+    aRows.push([it.name,b,s,b-s,b>0?(s/b):0]);
+  });
+  const aWs=XLSX.utils.aoa_to_sheet(aRows);
+  XLSX.utils.book_append_sheet(wb,aWs,'A帳戶');
+  // B
+  const bRows = [['B 帳戶（每年）'],['項目','預算/年','已花費','剩餘','使用率']];
+  state.b.forEach(it=>{
+    const s=effSpent(it),b=+it.budget||0;
+    bRows.push([it.name,b,s,b-s,b>0?(s/b):0]);
+  });
+  const bWs=XLSX.utils.aoa_to_sheet(bRows);
+  XLSX.utils.book_append_sheet(wb,bWs,'B帳戶');
+  // C
+  const cRows = [['C 帳戶（資產）'],['項目','餘額','成本','現價','獲利率']];
+  state.c.forEach(it=>{
+    const p = (it.cost>0)?((it.price-it.cost)/it.cost):0;
+    cRows.push([it.name,it.amount,it.cost,it.price,p]);
+  });
+  XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(cRows),'C帳戶');
+  // 明細
+  const dRows = [['帳戶','項目','日期','金額','備註']];
+  ['a','b'].forEach(k=>{
+    state[k].forEach(it=>{
+      (it.details||[]).forEach(d=>{
+        dRows.push([k.toUpperCase(),it.name,d.date,d.amount,d.note]);
+      });
+    });
+  });
+  XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(dRows),'花費明細');
+  XLSX.writeFile(wb,'ABC_1150320_'+new Date().toISOString().slice(0,10)+'.xlsx');
+}
+
+// ============ Firebase Modal ============
+function openFirebaseModal(){
+  const cfg = localStorage.getItem('firebase_config');
+  if(cfg) document.getElementById('fbConfigInput').value = cfg;
+  const pill = document.getElementById('fbStatus');
+  if(window.FIREBASE_READY){ pill.textContent='✓ 已啟用雲端同步'; pill.classList.add('online'); }
+  else { pill.textContent='未啟用（使用本機儲存）'; pill.classList.remove('online'); }
+  document.getElementById('modalFirebase').classList.add('open');
+}
+function closeFirebaseModal(){ document.getElementById('modalFirebase').classList.remove('open'); }
+function saveFirebaseCfg(){
+  const txt = document.getElementById('fbConfigInput').value.trim();
+  if(!txt){ alert('請貼上 firebaseConfig'); return; }
+  try{
+    const obj = JSON.parse(txt);
+    if(!obj.apiKey||!obj.databaseURL){ alert('設定缺少 apiKey 或 databaseURL'); return; }
+    localStorage.setItem('firebase_config', JSON.stringify(obj));
+    alert('已儲存。請按 F5 重新整理頁面以套用設定。');
+  }catch(e){ alert('JSON 解析失敗：'+e.message); }
+}
+function clearFirebaseCfg(){
+  if(!confirm('清除雲端設定，改回本機儲存？')) return;
+  localStorage.removeItem('firebase_config');
+  alert('已清除。按 F5 重新整理頁面。');
+}
+
+// 點 modal 背景關閉
+document.querySelectorAll('.modal-bg').forEach(bg=>{
+  bg.addEventListener('click',e=>{ if(e.target===bg) bg.classList.remove('open'); });
+});
+
+// ============ 字級調整 ============
+function setFontSize(size){
+  document.body.classList.remove('fs-l','fs-xl');
+  if(size==='l') document.body.classList.add('fs-l');
+  else if(size==='xl') document.body.classList.add('fs-xl');
+  localStorage.setItem('font_size_pref', size);
+  // 更新按鈕 active 狀態
+  document.querySelectorAll('.fs-buttons button').forEach(b=>{
+    b.classList.toggle('active', (b.dataset.fs||'')===size);
+  });
+  toast('字級已切換為 '+(size==='xl'?'特大':size==='l'?'大':'標準'),'success');
+}
+// 啟動時載入字級偏好
+(function initFontSize(){
+  const pref = localStorage.getItem('font_size_pref') || 'l'; // 預設「大」
+  if(pref==='l') document.body.classList.add('fs-l');
+  else if(pref==='xl') document.body.classList.add('fs-xl');
+  setTimeout(()=>{
+    document.querySelectorAll('.fs-buttons button').forEach(b=>{
+      b.classList.toggle('active', (b.dataset.fs||'')===pref);
+    });
+  }, 50);
+})();
+
+// ============ Toast 通知系統 ============
+function toast(msg, type){
+  const c = document.getElementById('toastContainer');
+  if(!c) return;
+  const t = document.createElement('div');
+  t.className = 'toast ' + (type||'');
+  t.textContent = msg;
+  c.appendChild(t);
+  setTimeout(()=>{ t.remove(); }, 3000);
+}
+
+// ============ 備註欄 ============
+function onNoteChange(key, val){
+  if(!state.notes) state.notes = {};
+  state.notes[key] = val;
+  saveState();
+}
+function renderNotes(){
+  if(!state.notes) state.notes = {};
+  ['tracker','charts','summary'].forEach(k=>{
+    const ta = document.getElementById('notes_'+k);
+    if(ta) ta.value = state.notes[k] || '';
+  });
+}
+
+// ============ 預算警示 ============
+let alertDismissed = false;
+function checkBudgetAlert(){
+  if(alertDismissed) return;
+  const warns = [];
+  state.a.forEach(it=>{
+    const b = +it.budget||0; const s = effSpent(it);
+    if(b>0 && s/b>=0.9) warns.push({k:'A', name:it.name, pct:Math.round(s/b*100)});
+  });
+  state.b.forEach(it=>{
+    const b = +it.budget||0; const s = effSpent(it);
+    if(b>0 && s/b>=0.9) warns.push({k:'B', name:it.name, pct:Math.round(s/b*100)});
+  });
+  const banner = document.getElementById('alertBanner');
+  const content = document.getElementById('alertContent');
+  if(warns.length===0){ banner.classList.remove('show'); return; }
+  const txt = warns.map(w=>`${w.k}.${w.name} (${w.pct}%)`).join('、');
+  content.innerHTML = `<strong>有 ${warns.length} 項目接近或超過預算</strong>：${txt}`;
+  banner.classList.add('show');
+}
+function dismissAlert(){
+  alertDismissed = true;
+  document.getElementById('alertBanner').classList.remove('show');
+}
+
+// ============ 多客戶管理 ============
+const CLIENTS_KEY = 'abc_clients_v1';
+const CLIENT_LIST_PATH = '_meta/clients.json'; // 在主資料倉庫存放客戶清單
+let clientListSha = null; // 用於 GitHub 寫入時的版本控制
+let clientListPushTimer = null;
+
+function loadClients(){
+  try{
+    const s = localStorage.getItem(CLIENTS_KEY);
+    if(s){ const obj = JSON.parse(s); if(obj && obj.clients) return obj; }
+  }catch(e){}
+  // 第一次使用 → 從現有 GH 設定遷移成「客戶 1」
+  const cfg = loadGhCfg();
+  if(cfg && cfg.repo){
+    const list = {
+      currentId: 'c001',
+      clients: {
+        'c001': { name:'簡世華', repo:cfg.repo, path:cfg.path||'data/state.json' }
+      }
+    };
+    saveClientsList(list);
+    return list;
+  }
+  return { currentId: null, clients: {} };
+}
+function saveClientsList(list){
+  localStorage.setItem(CLIENTS_KEY, JSON.stringify(list));
+}
+function getCurrentClient(){
+  const list = loadClients();
+  return list.currentId ? list.clients[list.currentId] : null;
+}
+function renderClientSelector(){
+  const sel = document.getElementById('clientSel');
+  if(!sel) return;
+  const list = loadClients();
+  const ids = Object.keys(list.clients);
+  if(ids.length===0){
+    sel.innerHTML = '<option value="">（尚未新增）</option>';
+    updateClientBanner(null);
+    return;
+  }
+  sel.innerHTML = ids.map(id=>{
+    const c = list.clients[id];
+    return `<option value="${id}" ${id===list.currentId?'selected':''}>${c.name||id}</option>`;
+  }).join('');
+  updateClientBanner(list.clients[list.currentId]);
+}
+
+function updateClientBanner(client){
+  const nameEl = document.getElementById('ccbName');
+  const repoEl = document.getElementById('ccbRepo');
+  const countEl = document.getElementById('ccbCount');
+  if(!nameEl) return;
+  if(!client){
+    nameEl.textContent = '尚未新增客戶';
+    repoEl.textContent = '';
+    countEl.textContent = '';
+    return;
+  }
+  nameEl.textContent = client.name || '(未命名)';
+  repoEl.textContent = (client.repo||'')+' / '+(client.path||'');
+  const monthCount = Object.keys(state.months||{}).length;
+  countEl.textContent = `${monthCount} 個月份資料 ・ A 帳戶 ${state.a.length} 項 ・ B 帳戶 ${state.b.length} 項`;
+}
+
+async function switchClient(id){
+  const list = loadClients();
+  if(!list.clients[id]) return;
+  if(id === list.currentId){ return; }
+  // 先把當前資料推到當前客戶的倉庫
+  const curClient = list.clients[list.currentId];
+  if(curClient){
+    try{ await pushToGithub(true); ghLog('✓ 切換前已將「'+curClient.name+'」資料上傳'); }catch(e){ ghLog('⚠ 切換前推送失敗：'+e.message); }
+  }
+  // 更新 currentId 與 GH cfg
+  list.currentId = id;
+  saveClientsList(list);
+  const newClient = list.clients[id];
+  const cfg = loadGhCfg() || {};
+  cfg.repo = newClient.repo;
+  cfg.path = newClient.path || 'data/state.json';
+  saveGhCfg(cfg);
+  ghLastSha = null;
+  // 拉新客戶資料
+  try{
+    await pullFromGithub();
+  }catch(e){
+    // 若 404，初始化空白
+    state = mergeWithInitial(JSON.parse(JSON.stringify(INITIAL)));
+    renderAll();
+    ghLog('⚠ 新客戶 '+newClient.name+' 倉庫尚無資料，使用空白範本');
+  }
+  renderClientSelector();
+  document.title = `📊 ${newClient.name} - ABC 帳戶管理`;
+  setSyncStatus(window.FIREBASE_READY||true, '✓ 已切換到 '+newClient.name);
+  toast('已切換到客戶「'+newClient.name+'」','success');
+}
+
+function addClientFromForm(){
+  const name = document.getElementById('newClientName').value.trim();
+  const repo = document.getElementById('newClientRepo').value.trim();
+  const path = document.getElementById('newClientPath').value.trim() || 'data/state.json';
+  if(!name||!repo){ alert('請填寫客戶名稱與倉庫名稱'); return; }
+  const list = loadClients();
+  // 檢查「倉庫 + 路徑」組合是否完全重複（允許同倉庫不同檔案路徑）
+  for(const id in list.clients){
+    const c = list.clients[id];
+    if(c.repo === repo && (c.path||'data/state.json') === path){
+      alert('此倉庫＋路徑組合已對應客戶：'+c.name+'\n\n如果想用同一個倉庫存多位客戶，請改成不同檔案路徑（例：data/'+name+'.json）');
+      return;
+    }
+  }
+  const id = 'c'+Date.now().toString(36);
+  list.clients[id] = { name, repo, path };
+  if(!list.currentId) list.currentId = id;
+  saveClientsList(list);
+  document.getElementById('newClientName').value='';
+  document.getElementById('newClientRepo').value='';
+  document.getElementById('newClientPath').value='data/state.json';
+  renderClientSelector();
+  renderClientListInModal();
+  schedulePushClientList(); // 跨裝置同步
+  toast('已新增客戶「'+name+'」，自動同步到 GitHub','success');
+}
+function deleteClient(id){
+  const list = loadClients();
+  const c = list.clients[id];
+  if(!c) return;
+  if(Object.keys(list.clients).length<=1){ alert('至少要保留一個客戶'); return; }
+  if(!confirm('刪除客戶「'+c.name+'」？\n（只會從清單移除，GitHub 倉庫的資料不會被刪）')) return;
+  delete list.clients[id];
+  if(list.currentId===id){
+    list.currentId = Object.keys(list.clients)[0];
+    saveClientsList(list);
+    switchClient(list.currentId);
+  } else {
+    saveClientsList(list);
+    renderClientSelector();
+    renderClientListInModal();
+  }
+  schedulePushClientList(); // 跨裝置同步
+}
+function updateClientField(id, field, value){
+  const list = loadClients();
+  if(!list.clients[id]) return;
+  list.clients[id][field] = value;
+  saveClientsList(list);
+  renderClientSelector();
+  if(id===list.currentId){
+    document.title = `📊 ${list.clients[id].name} - ABC 帳戶管理`;
+    // 若改了 repo/path 也要更新 GH cfg
+    const cfg = loadGhCfg() || {};
+    cfg.repo = list.clients[id].repo;
+    cfg.path = list.clients[id].path;
+    saveGhCfg(cfg);
+    ghLastSha = null;
+  }
+  schedulePushClientList(); // 跨裝置同步
+}
+function openClientModal(){
+  renderClientListInModal();
+  renderTemplateList();
+  document.getElementById('modalClient').classList.add('open');
+}
+function closeClientModal(){ document.getElementById('modalClient').classList.remove('open'); }
+function renderClientListInModal(){
+  const list = loadClients();
+  const ids = Object.keys(list.clients);
+  const div = document.getElementById('clientList');
+  if(ids.length===0){
+    div.innerHTML = '<p style="color:#a0aec0;text-align:center;padding:14px;">尚無客戶，請從下方新增</p>';
+    return;
+  }
+  let html = '<table class="client-tbl"><thead><tr><th style="width:30px;"></th><th>客戶名稱</th><th>GitHub 倉庫</th><th>檔案路徑</th><th style="width:140px;">操作</th></tr></thead><tbody>';
+  ids.forEach(id=>{
+    const c = list.clients[id];
+    const cur = id===list.currentId;
+    html += `<tr class="${cur?'current':''}">
+      <td>${cur?'⭐':''}</td>
+      <td><input value="${(c.name||'').replace(/"/g,'&quot;')}" oninput="updateClientField('${id}','name',this.value)"></td>
+      <td><input value="${(c.repo||'').replace(/"/g,'&quot;')}" oninput="updateClientField('${id}','repo',this.value)"></td>
+      <td><input value="${(c.path||'').replace(/"/g,'&quot;')}" oninput="updateClientField('${id}','path',this.value)"></td>
+      <td>
+        ${cur?'<span style="color:#718096;font-size:11px;">使用中</span>':`<button class="use-btn" onclick="switchClient('${id}');closeClientModal();">切換</button>`}
+        <button class="del-btn" onclick="deleteClient('${id}')">✕</button>
+      </td>
+    </tr>`;
+  });
+  html += '</tbody></table>';
+  div.innerHTML = html;
+}
+
+// ============ 項目模板系統 ============
+const TEMPLATES_KEY = 'abc_templates_v1';
+const TEMPLATE_PATH = '_meta/templates.json';
+let tplSha = null;
+let tplPushTimer = null;
+
+function loadTemplates(){
+  try{ return JSON.parse(localStorage.getItem(TEMPLATES_KEY)||'{}'); }catch(e){ return {}; }
+}
+function saveTemplatesLocal(obj){ localStorage.setItem(TEMPLATES_KEY, JSON.stringify(obj)); }
+
+function saveCurrentAsTemplate(){
+  const name = document.getElementById('newTplName').value.trim();
+  if(!name){ toast('請輸入模板名稱','warn'); return; }
+  const tpls = loadTemplates();
+  tpls[name] = {
+    a: state.a.map(it=>({name:it.name, budget:+it.budget||0, payment:it.payment||''})),
+    b: state.b.map(it=>({name:it.name, budget:+it.budget||0, payment:it.payment||''})),
+    _ts: Date.now()
+  };
+  saveTemplatesLocal(tpls);
+  document.getElementById('newTplName').value='';
+  renderTemplateList();
+  schedulePushTemplates();
+  toast('模板「'+name+'」已儲存','success');
+}
+function applyTemplate(name){
+  const tpls = loadTemplates();
+  if(!tpls[name]) return;
+  if(!confirm('套用模板「'+name+'」？\n\n會用模板的項目「取代」目前 A 與 B 帳戶的所有項目（已花費歸零）。\n\n建議只在剛新增、空白的客戶上使用。')) return;
+  pushUndo(); createBackup('套用模板前');
+  state.a = tpls[name].a.map(x=>({name:x.name, budget:x.budget, spent:0, details:[], payment:x.payment||''}));
+  state.b = tpls[name].b.map(x=>({name:x.name, budget:x.budget, spent:0, details:[], payment:x.payment||''}));
+  renderAll(); saveState();
+  toast('已套用模板「'+name+'」','success');
+}
+function deleteTemplate(name){
+  if(!confirm('刪除模板「'+name+'」？')) return;
+  const tpls = loadTemplates();
+  delete tpls[name];
+  saveTemplatesLocal(tpls);
+  renderTemplateList();
+  schedulePushTemplates();
+}
+function renderTemplateList(){
+  const div = document.getElementById('tplList');
+  if(!div) return;
+  const tpls = loadTemplates();
+  const names = Object.keys(tpls);
+  if(names.length===0){
+    div.innerHTML = '<p style="color:#a0aec0;font-size:12px;text-align:center;padding:8px;">尚無模板</p>';
+    return;
+  }
+  let html = '<table class="client-tbl"><thead><tr><th>模板名稱</th><th>A 項目數</th><th>B 項目數</th><th style="width:160px;">操作</th></tr></thead><tbody>';
+  names.forEach(n=>{
+    const t = tpls[n];
+    html += `<tr>
+      <td>${n}</td>
+      <td>${(t.a||[]).length}</td>
+      <td>${(t.b||[]).length}</td>
+      <td>
+        <button class="use-btn" onclick="applyTemplate('${n.replace(/'/g,"\\'")}')">📥 套用到目前客戶</button>
+        <button class="del-btn" onclick="deleteTemplate('${n.replace(/'/g,"\\'")}')">✕</button>
+      </td>
+    </tr>`;
+  });
+  html += '</tbody></table>';
+  div.innerHTML = html;
+}
+
+async function pullTemplates(){
+  const cfg = loadGhCfg();
+  if(!cfg || !cfg.owner || !cfg.token) return;
+  const repo = getClientListRepo(); if(!repo) return;
+  try{
+    const url = `https://api.github.com/repos/${encodeURIComponent(cfg.owner)}/${encodeURIComponent(repo)}/contents/${TEMPLATE_PATH}`;
+    const res = await fetch(url, { headers:{'Authorization':'Bearer '+cfg.token, 'Accept':'application/vnd.github+json'} });
+    if(res.status===404){ tplSha=null; return; }
+    if(!res.ok) return;
+    const f = await res.json();
+    tplSha = f.sha;
+    const remote = JSON.parse(b64ToUtf8(f.content));
+    saveTemplatesLocal(remote.templates||{});
+    renderTemplateList();
+  }catch(e){}
+}
+async function pushTemplates(){
+  const cfg = loadGhCfg();
+  if(!cfg || !cfg.owner || !cfg.token) return;
+  const repo = getClientListRepo(); if(!repo) return;
+  const tpls = loadTemplates();
+  try{
+    if(!tplSha){
+      try{
+        const r = await fetch(`https://api.github.com/repos/${encodeURIComponent(cfg.owner)}/${encodeURIComponent(repo)}/contents/${TEMPLATE_PATH}`, { headers:{'Authorization':'Bearer '+cfg.token, 'Accept':'application/vnd.github+json'} });
+        if(r.ok){ const d = await r.json(); tplSha = d.sha; }
+      }catch(e){}
+    }
+    const body = {
+      message: `update templates ${new Date().toISOString()}`,
+      content: utf8ToB64(JSON.stringify({templates:tpls,_ts:Date.now()}, null, 2)),
+      branch:'main'
+    };
+    if(tplSha) body.sha = tplSha;
+    const res = await fetch(`https://api.github.com/repos/${encodeURIComponent(cfg.owner)}/${encodeURIComponent(repo)}/contents/${TEMPLATE_PATH}`, {
+      method:'PUT',
+      headers:{'Authorization':'Bearer '+cfg.token, 'Accept':'application/vnd.github+json', 'Content-Type':'application/json'},
+      body: JSON.stringify(body)
+    });
+    if(res.ok){ const r = await res.json(); tplSha = r.content.sha; }
+  }catch(e){}
+}
+function schedulePushTemplates(){
+  const cfg = loadGhCfg();
+  if(!cfg || !cfg.autoSync) return;
+  clearTimeout(tplPushTimer);
+  tplPushTimer = setTimeout(pushTemplates, 2000);
+}
+
+// ============ 單項目跨月趨勢圖 ============
+let chartItemTrend = null;
+function refreshTrendItemSel(){
+  const sel = document.getElementById('trendItemSel');
+  if(!sel) return;
+  const items = [...state.a.map(x=>({k:'A',name:x.name})), ...state.b.map(x=>({k:'B',name:x.name}))]
+    .filter(x=>x.name);
+  const cur = sel.value;
+  sel.innerHTML = items.map(x=>`<option value="${x.k}|${x.name}">${x.k}.${x.name}</option>`).join('');
+  if(cur && items.some(x=>x.k+'|'+x.name===cur)) sel.value = cur;
+}
+function renderItemTrend(){
+  refreshTrendItemSel();
+  const sel = document.getElementById('trendItemSel');
+  if(!sel || !sel.value) return;
+  const [k, ...nameParts] = sel.value.split('|');
+  const name = nameParts.join('|');
+  const months = Object.keys(state.months||{}).sort();
+  const data = months.map(m=>{
+    const md = state.months[m];
+    const arr = (md[k.toLowerCase()]||[]);
+    const it = arr.find(x=>x.name===name);
+    return it ? effSpent(it) : 0;
+  });
+  const budgets = months.map(m=>{
+    const md = state.months[m];
+    const arr = (md[k.toLowerCase()]||[]);
+    const it = arr.find(x=>x.name===name);
+    return it ? (+it.budget||0) : 0;
+  });
+  if(chartItemTrend) chartItemTrend.destroy();
+  chartItemTrend = new Chart(document.getElementById('chartItemTrend'),{
+    type:'line', data:{labels:months, datasets:[
+      {label:'已花費',data:data,borderColor:'#dd6b20',backgroundColor:'rgba(221,107,32,.15)',tension:.3,fill:true,borderWidth:2},
+      {label:'預算',data:budgets,borderColor:'#3182ce',borderDash:[5,5],fill:false,borderWidth:2}
+    ]},
+    options:{responsive:true, plugins:{legend:{position:'bottom'}, title:{display:true, text:k+'.'+name+' 跨月趨勢'}}}
+  });
+}
+
+// ============ 客戶清單跨裝置同步 ============
+// 取得用於存放客戶清單的倉庫名稱（採用「第一個客戶」的倉庫，最常見的情境）
+function getClientListRepo(){
+  const list = loadClients();
+  const ids = Object.keys(list.clients);
+  if(ids.length>0) return list.clients[ids[0]].repo;
+  // 沒有客戶 → 用當前 GH cfg 的 repo
+  const cfg = loadGhCfg();
+  return cfg ? cfg.repo : null;
+}
+
+async function pullClientList(){
+  const cfg = loadGhCfg();
+  if(!cfg || !cfg.owner || !cfg.token) return;
+  const repo = getClientListRepo();
+  if(!repo) return;
+  try{
+    const url = `https://api.github.com/repos/${encodeURIComponent(cfg.owner)}/${encodeURIComponent(repo)}/contents/${CLIENT_LIST_PATH}`;
+    const res = await fetch(url, {
+      headers: {
+        'Authorization': 'Bearer ' + cfg.token,
+        'Accept': 'application/vnd.github+json',
+        'X-GitHub-Api-Version': '2022-11-28'
+      }
+    });
+    if(res.status === 404){
+      ghLog('遠端尚無客戶清單，將在第一次推送時建立');
+      clientListSha = null;
+      // 推送目前本機客戶清單作為初始版
+      schedulePushClientList();
+      return;
+    }
+    if(!res.ok) throw new Error('HTTP '+res.status);
+    const f = await res.json();
+    clientListSha = f.sha;
+    const remote = JSON.parse(b64ToUtf8(f.content));
+    const local = loadClients();
+    // 合併：以遠端 clients 為準（跨裝置同步），currentId 保留本地（每裝置可看不同客戶）
+    const merged = {
+      currentId: local.currentId && (remote.clients||{})[local.currentId] ? local.currentId : (Object.keys(remote.clients||{})[0] || null),
+      clients: remote.clients || local.clients
+    };
+    saveClientsList(merged);
+    renderClientSelector();
+    if(document.getElementById('modalClient').classList.contains('open')) renderClientListInModal();
+    ghLog('✓ 客戶清單已從遠端同步 ('+Object.keys(merged.clients||{}).length+' 位)');
+  }catch(e){
+    ghLog('⚠ 拉取客戶清單失敗：'+e.message);
+  }
+}
+
+async function pushClientList(){
+  const cfg = loadGhCfg();
+  if(!cfg || !cfg.owner || !cfg.token) return;
+  const repo = getClientListRepo();
+  if(!repo) return;
+  const list = loadClients();
+  try{
+    if(!clientListSha){
+      // 嘗試取得當前 sha（避免衝突）
+      try{
+        const url = `https://api.github.com/repos/${encodeURIComponent(cfg.owner)}/${encodeURIComponent(repo)}/contents/${CLIENT_LIST_PATH}`;
+        const r = await fetch(url, {
+          headers: { 'Authorization': 'Bearer '+cfg.token, 'Accept':'application/vnd.github+json' }
+        });
+        if(r.ok){ const d = await r.json(); clientListSha = d.sha; }
+      }catch(e){ /* ignore */ }
+    }
+    const body = {
+      message: `update clients ${new Date().toISOString()}`,
+      content: utf8ToB64(JSON.stringify({
+        clients: list.clients,
+        _ts: Date.now()
+      }, null, 2)),
+      branch: 'main'
+    };
+    if(clientListSha) body.sha = clientListSha;
+    const url = `https://api.github.com/repos/${encodeURIComponent(cfg.owner)}/${encodeURIComponent(repo)}/contents/${CLIENT_LIST_PATH}`;
+    const res = await fetch(url, {
+      method:'PUT',
+      headers:{
+        'Authorization':'Bearer '+cfg.token,
+        'Accept':'application/vnd.github+json',
+        'Content-Type':'application/json'
+      },
+      body: JSON.stringify(body)
+    });
+    if(!res.ok){
+      const txt = await res.text();
+      // sha 不符 → 重拉再推
+      if(res.status===409 || txt.includes('does not match')){
+        clientListSha = null;
+        await pullClientList();
+        return;
+      }
+      throw new Error('HTTP '+res.status+': '+txt.slice(0,150));
+    }
+    const result = await res.json();
+    clientListSha = result.content.sha;
+    ghLog('✓ 客戶清單已上傳 (sha '+clientListSha.slice(0,7)+')');
+  }catch(e){
+    ghLog('⚠ 推送客戶清單失敗：'+e.message);
+  }
+}
+
+function schedulePushClientList(){
+  const cfg = loadGhCfg();
+  if(!cfg || !cfg.autoSync) return;
+  clearTimeout(clientListPushTimer);
+  clientListPushTimer = setTimeout(pushClientList, 2000);
+}
+
+// ============ GitHub 私人倉庫同步 ============
+const GH_CFG_KEY = 'github_sync_cfg_v1';
+let ghLastSha = null;
+let ghPushTimer = null;
+let ghPullTimer = null;
+let ghInbound = false; // 防止接收時又寫回
+
+function loadGhCfg(){
+  try{ return JSON.parse(localStorage.getItem(GH_CFG_KEY)||'null'); }catch(e){ return null; }
+}
+function saveGhCfg(cfg){ localStorage.setItem(GH_CFG_KEY, JSON.stringify(cfg)); }
+function ghLog(msg){
+  const el = document.getElementById('ghLog');
+  if(!el) return;
+  const t = new Date().toLocaleTimeString('zh-Hant');
+  el.textContent = `[${t}] ${msg}\n` + el.textContent;
+}
+function setGhStatus(state, txt){
+  const pill = document.getElementById('ghStatus');
+  if(pill){ pill.textContent = txt; pill.classList.toggle('online', state==='ok'); }
+  // 同步狀態列
+  const top = document.getElementById('syncStatus');
+  if(top){
+    top.textContent = (state==='ok'?'🐙 ':'⚠️ ')+txt;
+    top.classList.toggle('online', state==='ok');
+  }
+}
+
+// Base64 編碼 / 解碼支援 UTF-8
+function utf8ToB64(s){ return btoa(unescape(encodeURIComponent(s))); }
+function b64ToUtf8(s){ return decodeURIComponent(escape(atob(s.replace(/\n/g,'')))); }
+
+async function ghApi(path, method, body){
+  const cfg = loadGhCfg();
+  if(!cfg) throw new Error('未設定 GitHub');
+  const url = `https://api.github.com/repos/${encodeURIComponent(cfg.owner)}/${encodeURIComponent(cfg.repo)}/${path}`;
+  const opts = {
+    method: method||'GET',
+    headers: {
+      'Authorization': 'Bearer '+cfg.token,
+      'Accept': 'application/vnd.github+json',
+      'X-GitHub-Api-Version': '2022-11-28'
+    }
+  };
+  if(body){
+    opts.headers['Content-Type'] = 'application/json';
+    opts.body = JSON.stringify(body);
+  }
+  const res = await fetch(url, opts);
+  if(!res.ok){
+    const txt = await res.text();
+    throw new Error(`HTTP ${res.status}: ${txt.slice(0,200)}`);
+  }
+  return res.json();
+}
+
+async function testGithubConn(){
+  ghLog('測試連線中...');
+  // 若 Modal 開啟中且表單有填值，優先用表單暫存值測試（避免要先「儲存」才能測）
+  const modal = document.getElementById('modalGithub');
+  if(modal && modal.classList.contains('open')){
+    const owner = (document.getElementById('ghOwner')?.value||'').trim();
+    const repo = (document.getElementById('ghRepo')?.value||'').trim();
+    const token = (document.getElementById('ghToken')?.value||'').trim();
+    if(owner && repo && token){
+      // 暫存到 localStorage 給 ghApi 用，但若是測試用會在最後保留
+      const existing = loadGhCfg();
+      saveGhCfg({
+        owner, repo, token,
+        path:(document.getElementById('ghPath')?.value||'data/state.json').trim(),
+        branch:'main',
+        autoSync:document.getElementById('ghAutoSync')?.checked
+      });
+      try{
+        const r = await ghApi('', 'GET');
+        ghLog(`✓ 連線成功，倉庫 ${r.full_name}（${r.private?'私人':'公開'}）`);
+        setGhStatus('ok','✓ 連線成功');
+        return;
+      }catch(e){
+        // 還原舊設定
+        if(existing) saveGhCfg(existing); else localStorage.removeItem(GH_CFG_KEY);
+        ghLog('✗ '+e.message);
+        setGhStatus('err','✗ 連線失敗');
+        return;
+      }
+    }
+  }
+  try{
+    const r = await ghApi('', 'GET');
+    ghLog(`✓ 連線成功，倉庫 ${r.full_name}（${r.private?'私人':'公開'}）`);
+    setGhStatus('ok','✓ 連線成功');
+  }catch(e){ ghLog('✗ '+e.message); setGhStatus('err','✗ 連線失敗'); }
+}
+
+async function pullFromGithub(){
+  const cfg = loadGhCfg();
+  if(!cfg){ alert('請先設定'); return; }
+  ghLog('拉取中...');
+  try{
+    const f = await ghApi(`contents/${encodeURIComponent(cfg.path)}`, 'GET');
+    ghLastSha = f.sha;
+    const content = b64ToUtf8(f.content);
+    const remote = JSON.parse(content);
+    ghInbound = true;
+    state = mergeWithInitial(remote);
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    renderAll();
+    setTimeout(()=>{ ghInbound=false; }, 200);
+    const ts = new Date().toLocaleTimeString('zh-Hant');
+    ghLog('✓ 已拉取最新版 (sha '+f.sha.slice(0,7)+')');
+    setGhStatus('ok','🐙 已同步 '+ts);
+  }catch(e){
+    if(e.message.includes('404')){
+      ghLog('遠端尚無檔案，將在第一次推送時建立');
+      setGhStatus('ok','🐙 待初始化');
+      ghLastSha = null;
+    } else {
+      ghLog('✗ '+e.message);
+      setGhStatus('err','拉取失敗');
+    }
+  }
+}
+
+async function pushToGithub(skipConfirm){
+  const cfg = loadGhCfg();
+  if(!cfg){ if(!skipConfirm) alert('請先設定'); return; }
+  if(ghInbound) return; // 避免回流
+  try{
+    // 若沒有 sha 且本地之前沒拉過，先嘗試取一次 sha 避免「sha 不符」
+    if(!ghLastSha){
+      try{
+        const f = await ghApi(`contents/${encodeURIComponent(cfg.path)}`, 'GET');
+        ghLastSha = f.sha;
+      }catch(e){ /* 404 → 第一次建立，不需要 sha */ }
+    }
+    const body = {
+      message: `update ${new Date().toISOString()}`,
+      content: utf8ToB64(JSON.stringify(state, null, 2)),
+      branch: cfg.branch || 'main'
+    };
+    if(ghLastSha) body.sha = ghLastSha;
+    const result = await ghApi(`contents/${encodeURIComponent(cfg.path)}`, 'PUT', body);
+    ghLastSha = result.content.sha;
+    const ts = new Date().toLocaleTimeString('zh-Hant');
+    ghLog('✓ 已推送 (sha '+ghLastSha.slice(0,7)+')');
+    setGhStatus('ok','🐙 已上傳 '+ts);
+  }catch(e){
+    // 409 sha 衝突 → 先拉再合併
+    if(e.message.includes('409') || e.message.includes('does not match')){
+      ghLog('⚠ sha 衝突，重新拉取後再推...');
+      await pullFromGithub();
+      // 拉完後本地已經是遠端版，這次就不再推
+    } else {
+      ghLog('✗ '+e.message);
+      setGhStatus('err','推送失敗');
+    }
+  }
+}
+
+// 在 saveState 後被觸發：debounce 上傳
+function schedulePush(){
+  const cfg = loadGhCfg();
+  if(!cfg || !cfg.autoSync || ghInbound) return;
+  clearTimeout(ghPushTimer);
+  ghPushTimer = setTimeout(()=>pushToGithub(true), 3000);
+}
+
+// 定時輪詢遠端是否有新版（每 60 秒）
+function startGhPolling(){
+  clearInterval(ghPullTimer);
+  const cfg = loadGhCfg();
+  if(!cfg || !cfg.autoSync) return;
+  ghPullTimer = setInterval(async ()=>{
+    try{
+      const f = await ghApi(`contents/${encodeURIComponent(cfg.path)}`, 'GET');
+      if(f.sha !== ghLastSha){
+        ghLog('偵測到遠端有新版，自動拉取');
+        await pullFromGithub();
+      }
+    }catch(e){ /* 安靜失敗 */ }
+  }, 60000);
+}
+
+function openGithubModal(){
+  const cfg = loadGhCfg() || {};
+  document.getElementById('ghOwner').value = cfg.owner||'';
+  document.getElementById('ghRepo').value = cfg.repo||'';
+  document.getElementById('ghPath').value = cfg.path||'data/state.json';
+  document.getElementById('ghToken').value = cfg.token||'';
+  document.getElementById('ghAutoSync').checked = cfg.autoSync !== false;
+  const pill = document.getElementById('ghStatus');
+  if(cfg.token){ pill.textContent='已設定（按「測試連線」驗證）'; }
+  else { pill.textContent='未啟用'; pill.classList.remove('online'); }
+  document.getElementById('modalGithub').classList.add('open');
+}
+function closeGithubModal(){ document.getElementById('modalGithub').classList.remove('open'); }
+
+function saveGithubCfg(){
+  const cfg = {
+    owner: document.getElementById('ghOwner').value.trim(),
+    repo: document.getElementById('ghRepo').value.trim(),
+    path: document.getElementById('ghPath').value.trim() || 'data/state.json',
+    token: document.getElementById('ghToken').value.trim(),
+    branch: 'main',
+    autoSync: document.getElementById('ghAutoSync').checked
+  };
+  if(!cfg.owner||!cfg.repo||!cfg.token){ alert('請至少填寫帳號、倉庫、Token'); return; }
+  saveGhCfg(cfg);
+  ghLog('設定已儲存');
+  testGithubConn().then(()=>{
+    if(confirm('連線設定成功！要立刻從遠端拉取資料嗎？\n（若是首次設定，請選「否」並按「立即推送」初始化）')){
+      pullFromGithub();
+    }
+    startGhPolling();
+  });
+}
+function clearGithubCfg(){
+  if(!confirm('清除 GitHub 設定（不會刪除遠端資料）？')) return;
+  localStorage.removeItem(GH_CFG_KEY);
+  clearInterval(ghPullTimer);
+  setGhStatus('off','未啟用');
+  ghLog('設定已清除');
+  closeGithubModal();
+}
+
+// ============ 初始化 ============
+renderAll();
+saveState(true); // 初始化不寫雲端
+setSyncStatus(window.FIREBASE_READY, window.FIREBASE_READY?'☁️ 雲端就緒':'💾 本機儲存（未啟用雲端）');
+
+// 多客戶初始化：載入客戶清單並渲染切換器
+(function initClients(){
+  loadClients(); // 觸發遷移
+  renderClientSelector();
+  const cur = getCurrentClient();
+  if(cur) document.title = `📊 ${cur.name} - ABC 帳戶管理`;
+})();
+
+// 若已設定 GitHub，啟動時自動拉取最新 & 開啟輪詢
+(async function initGithubSync(){
+  const cfg = loadGhCfg();
+  if(!cfg) return;
+  setGhStatus('ok','🐙 連線中...');
+  // 先拉客戶清單與模板（跨裝置同步）
+  await pullClientList();
+  await pullTemplates();
+  // 確保 GH cfg 的 repo/path 對應到最新的當前客戶
+  const cur = getCurrentClient();
+  if(cur){
+    cfg.repo = cur.repo;
+    cfg.path = cur.path || 'data/state.json';
+    saveGhCfg(cfg);
+    ghLastSha = null;
+  }
+  // 再拉當前客戶的資料
+  await pullFromGithub();
+  if(cfg.autoSync) startGhPolling();
+})();
+
+// 啟動時自動建立一份「開檔備份」（一天最多一次）
+(function initialBackup(){
+  const arr = loadBackups();
+  const today = new Date().toDateString();
+  const todayHas = arr.some(b => b.label==='每日開檔備份' && new Date(b.ts).toDateString()===today);
+  if(!todayHas) createBackup('每日開檔備份');
+})();
+
+// 每 10 分鐘自動備份一次（若內容有變化）
+setInterval(()=>createBackup('定時自動備份'), 10*60*1000);
+
+// 鍵盤快捷鍵：Ctrl/Cmd + Z = 復原
+document.addEventListener('keydown', e=>{
+  if((e.ctrlKey||e.metaKey) && e.key.toLowerCase()==='z' && !e.shiftKey){
+    // 避免攔截到輸入框的原生 undo
+    const tag = (e.target.tagName||'').toLowerCase();
+    if(tag==='input'||tag==='textarea') return;
+    e.preventDefault();
+    undoLast();
+  }
+});
+</script>
+</body>
+</html>
