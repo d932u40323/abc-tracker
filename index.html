@@ -36,10 +36,64 @@
 </script>
 <style>
   * { box-sizing: border-box; }
+  :root { --fs-scale: 1; }
+  body.fs-l { --fs-scale: 1.18; }
+  body.fs-xl { --fs-scale: 1.35; }
   body {
     font-family: "Microsoft JhengHei","PingFang TC","Noto Sans TC",Arial,sans-serif;
     margin:0; padding:0; background:#f5f6fa; color:#222;
+    font-size: calc(14px * var(--fs-scale));
   }
+  /* 字級縮放：對主要顯示元素套用比例 */
+  body.fs-l table.tracker thead th,
+  body.fs-xl table.tracker thead th { font-size: calc(12px * var(--fs-scale)); }
+  body.fs-l table.tracker input,
+  body.fs-xl table.tracker input { font-size: calc(13px * var(--fs-scale)); }
+  body.fs-l table.tracker td,
+  body.fs-xl table.tracker td { font-size: calc(13px * var(--fs-scale)); }
+  body.fs-l nav.tabs button,
+  body.fs-xl nav.tabs button { font-size: calc(14px * var(--fs-scale)); }
+  body.fs-l .income-line input,
+  body.fs-xl .income-line input { font-size: calc(14px * var(--fs-scale)); }
+  body.fs-l .income-line label,
+  body.fs-xl .income-line label { font-size: calc(14px * var(--fs-scale)); }
+  body.fs-l .income-line .readonly-val,
+  body.fs-xl .income-line .readonly-val { font-size: calc(14px * var(--fs-scale)); }
+  body.fs-l .income-line .readonly-val.big,
+  body.fs-xl .income-line .readonly-val.big { font-size: calc(18px * var(--fs-scale)); }
+  body.fs-l .card h2,
+  body.fs-xl .card h2 { font-size: calc(16px * var(--fs-scale)); }
+  body.fs-l .summary-tile .label,
+  body.fs-xl .summary-tile .label { font-size: calc(12px * var(--fs-scale)); }
+  body.fs-l .summary-tile .value,
+  body.fs-xl .summary-tile .value { font-size: calc(20px * var(--fs-scale)); }
+  body.fs-l .gc-row,
+  body.fs-xl .gc-row { font-size: calc(14px * var(--fs-scale)); }
+  body.fs-l .gc-row .gc-val,
+  body.fs-xl .gc-row .gc-val { font-size: calc(16px * var(--fs-scale)); }
+  body.fs-l .gc-row.total .gc-val,
+  body.fs-xl .gc-row.total .gc-val { font-size: calc(22px * var(--fs-scale)); }
+  body.fs-l .gc-row.highlight .gc-val,
+  body.fs-xl .gc-row.highlight .gc-val { font-size: calc(24px * var(--fs-scale)); }
+  body.fs-l .notes-box textarea,
+  body.fs-xl .notes-box textarea { font-size: calc(13px * var(--fs-scale)); }
+  body.fs-l table.history th,
+  body.fs-xl table.history th { font-size: calc(11px * var(--fs-scale)); }
+  body.fs-l table.history td,
+  body.fs-xl table.history td { font-size: calc(12px * var(--fs-scale)); }
+  body.fs-l .current-client-banner .ccb-name,
+  body.fs-xl .current-client-banner .ccb-name { font-size: calc(24px * var(--fs-scale)); }
+  body.fs-l .add-row,
+  body.fs-xl .add-row { font-size: calc(12px * var(--fs-scale)); }
+
+  /* 字級按鈕 */
+  .fs-buttons { display:inline-flex; background:rgba(255,255,255,.15); border-radius:6px; padding:2px; }
+  .fs-buttons button {
+    background:transparent; border:0; color:#fff; padding:4px 10px;
+    cursor:pointer; font-weight:600; border-radius:4px; font-size:13px;
+  }
+  .fs-buttons button:hover { background:rgba(255,255,255,.15); }
+  .fs-buttons button.active { background:#fff; color:#2c5282; }
   header {
     background:linear-gradient(135deg,#2c5282,#4a6fa5);
     color:#fff; padding:14px 24px;
@@ -383,6 +437,11 @@
     <select id="clientSel" onchange="switchClient(this.value)"></select>
     <button class="client-btn" onclick="openClientModal()" title="管理客戶清單">👥 客戶管理</button>
   </div>
+  <div class="fs-buttons" title="調整字級大小">
+    <button data-fs="" onclick="setFontSize('')">A 標準</button>
+    <button data-fs="l" onclick="setFontSize('l')">A 大</button>
+    <button data-fs="xl" onclick="setFontSize('xl')">A 特大</button>
+  </div>
   <span class="sync-status" id="syncStatus">🟡 本機儲存</span>
   <div class="toolbar">
     <button onclick="undoLast()" title="撤銷最近一次操作（Ctrl+Z）">↶ 復原</button>
@@ -567,6 +626,7 @@
       <table class="tracker" id="tblC">
         <thead>
           <tr>
+            <th style="width:110px;">類別</th>
             <th>項目</th>
             <th class="num">餘額</th>
             <th class="num">成本</th>
@@ -578,6 +638,7 @@
         <tbody></tbody>
         <tfoot>
           <tr>
+            <td></td>
             <td>合計</td>
             <td class="num" id="footC_amount">0</td>
             <td class="num" id="footC_cost">0</td>
@@ -931,6 +992,11 @@ function mergeWithInitial(obj){
   if(Array.isArray(obj.c)) out.c=obj.c;
   if(obj.notes && typeof obj.notes==='object') out.notes = obj.notes;
   ['a','b'].forEach(k=>out[k].forEach(it=>{ if(!Array.isArray(it.details)) it.details=[]; if(it.spent==null) it.spent=0; if(it.payment==null) it.payment=''; }));
+  // C 帳戶也加上 details 欄位（供記錄配息/加碼/贖回等明細）+ 類別欄
+  if(Array.isArray(out.c)) out.c.forEach(it=>{
+    if(!Array.isArray(it.details)) it.details=[];
+    if(it.category==null) it.category='';
+  });
 
   // 處理多月份結構
   out.months = obj.months || {};
@@ -1167,11 +1233,15 @@ function renderAssetTbl(key, tblId){
     const profitStr = profit==null?'-':(profit>=0?'+':'')+profit.toFixed(2)+'%';
     const profitCls = profit==null?'':(profit>=0?'bal-pos':'bal-neg');
     const last = items.length-1;
+    const detailsOpen = it._open;
     const tr = document.createElement('tr');
     tr.draggable = true;
     tr.dataset.idx = idx;
     tr.dataset.k = 'c';
     tr.innerHTML = `
+      <td>
+        <input data-k="c" data-i="${idx}" data-f="category" value="${escAttr(it.category||'')}" placeholder="例：保險／基金" style="width:100%;">
+      </td>
       <td class="name">
         <span class="drag-handle" title="拖曳調整順序">⋮⋮</span>
         <input data-k="c" data-i="${idx}" data-f="name" value="${escAttr(it.name||'')}" style="width:calc(100% - 28px);">
@@ -1184,13 +1254,31 @@ function renderAssetTbl(key, tblId){
         <div class="row-actions">
           <button class="move-btn" onclick="moveRow('c',${idx},-1)" title="上移" ${idx===0?'disabled':''}>▲</button>
           <button class="move-btn" onclick="moveRow('c',${idx},1)" title="下移" ${idx===last?'disabled':''}>▼</button>
+          <button class="add-detail-btn" onclick="toggleDetails('c',${idx})">${detailsOpen?'▾':'▸'} 明細(${(it.details||[]).length})</button>
           <button class="del-btn" onclick="delRow('c',${idx})">✕</button>
         </div>
       </td>
     `;
     tbody.appendChild(tr);
+    if(detailsOpen){
+      const dtr = document.createElement('tr');
+      dtr.className='detail-row';
+      let html = '<td colspan="7">';
+      (it.details||[]).forEach((d, di)=>{
+        html += `<div class="detail-grid" style="margin-bottom:4px;">
+          <input type="date" data-k="c" data-i="${idx}" data-di="${di}" data-f="date" value="${d.date||''}">
+          <input type="number" class="num" data-k="c" data-i="${idx}" data-di="${di}" data-f="amount" value="${d.amount||0}" placeholder="金額（如配息、加碼、贖回）">
+          <input data-k="c" data-i="${idx}" data-di="${di}" data-f="note" value="${escAttr(d.note||'')}" placeholder="備註（例：年度配息 / 加碼買進 / 部分贖回）">
+          <button class="del-btn" onclick="delDetail('c',${idx},${di})">✕</button>
+        </div>`;
+      });
+      html += `<button class="add-detail-btn" onclick="addDetail('c',${idx})">+ 新增一筆明細</button>`;
+      html += '</td>';
+      dtr.innerHTML = html;
+      tbody.appendChild(dtr);
+    }
   });
-  tbody.querySelectorAll('input').forEach(inp=>{
+  tbody.querySelectorAll('input[data-f]').forEach(inp=>{
     inp.addEventListener('input', onFieldChange);
   });
   document.getElementById('footC_amount').textContent=fmt(totAmt);
@@ -1304,7 +1392,7 @@ function onFieldChange(e){
   const di=e.target.dataset.di;
   let v=e.target.value;
   // 字串類型欄位保持原值，其他欄位轉數字
-  const stringFields = ['name','note','date','payment'];
+  const stringFields = ['name','note','date','payment','category'];
   if(!stringFields.includes(f)) v = v===''?0:parseFloat(v);
   if(di!=null){
     if(!Array.isArray(state[k][i].details)) state[k][i].details=[];
@@ -1381,7 +1469,9 @@ function updateAssetRow(i){
   const cost = +it.cost||0, price = +it.price||0;
   const profit = cost>0?((price-cost)/cost*100):null;
   const profitStr = profit==null?'-':(profit>=0?'+':'')+profit.toFixed(2)+'%';
-  const td = tr.children[4];
+  // 多了「類別」欄之後，獲利率欄位變成 children[5]
+  const td = tr.children[5];
+  if(!td) return;
   td.className = 'num ' + (profit==null?'':(profit>=0?'bal-pos':'bal-neg'));
   td.textContent = profitStr;
 }
@@ -1581,7 +1671,7 @@ function renderHistoryStats(){
 }
 
 function addRow(k){
-  if(k==='c') state.c.push({name:'新項目',amount:0,cost:0,price:0});
+  if(k==='c') state.c.push({category:'',name:'新項目',amount:0,cost:0,price:0,details:[]});
   else state[k].push({name:'新項目',budget:0,spent:0,details:[]});
   renderAll(); saveState();
 }
@@ -1647,19 +1737,24 @@ function enableDragSort(tblId){
 function toggleDetails(k,i){
   state[k][i]._open = !state[k][i]._open;
   if(k==='a') renderBudgetTbl('a','tblA');
-  else renderBudgetTbl('b','tblB');
+  else if(k==='b') renderBudgetTbl('b','tblB');
+  else renderAssetTbl('c','tblC');
 }
 function addDetail(k,i){
   if(!Array.isArray(state[k][i].details)) state[k][i].details=[];
   state[k][i].details.push({date:new Date().toISOString().slice(0,10),amount:0,note:''});
   state[k][i]._open = true;
-  renderBudgetTbl(k, k==='a'?'tblA':'tblB');
+  if(k==='a') renderBudgetTbl('a','tblA');
+  else if(k==='b') renderBudgetTbl('b','tblB');
+  else renderAssetTbl('c','tblC');
   renderSummary(); saveState();
 }
 function delDetail(k,i,di){
   pushUndo();
   state[k][i].details.splice(di,1);
-  renderBudgetTbl(k, k==='a'?'tblA':'tblB');
+  if(k==='a') renderBudgetTbl('a','tblA');
+  else if(k==='b') renderBudgetTbl('b','tblB');
+  else renderAssetTbl('c','tblC');
   renderSummary(); saveState();
 }
 function resetSpending(k){
@@ -1967,15 +2062,15 @@ function exportExcel(){
   const bWs=XLSX.utils.aoa_to_sheet(bRows);
   XLSX.utils.book_append_sheet(wb,bWs,'B帳戶');
   // C
-  const cRows = [['C 帳戶（資產）'],['項目','餘額','成本','現價','獲利率']];
+  const cRows = [['C 帳戶（資產）'],['類別','項目','餘額','成本','現價','獲利率']];
   state.c.forEach(it=>{
     const p = (it.cost>0)?((it.price-it.cost)/it.cost):0;
-    cRows.push([it.name,it.amount,it.cost,it.price,p]);
+    cRows.push([it.category||'',it.name,it.amount,it.cost,it.price,p]);
   });
   XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(cRows),'C帳戶');
   // 明細
   const dRows = [['帳戶','項目','日期','金額','備註']];
-  ['a','b'].forEach(k=>{
+  ['a','b','c'].forEach(k=>{
     state[k].forEach(it=>{
       (it.details||[]).forEach(d=>{
         dRows.push([k.toUpperCase(),it.name,d.date,d.amount,d.note]);
@@ -2016,6 +2111,30 @@ function clearFirebaseCfg(){
 document.querySelectorAll('.modal-bg').forEach(bg=>{
   bg.addEventListener('click',e=>{ if(e.target===bg) bg.classList.remove('open'); });
 });
+
+// ============ 字級調整 ============
+function setFontSize(size){
+  document.body.classList.remove('fs-l','fs-xl');
+  if(size==='l') document.body.classList.add('fs-l');
+  else if(size==='xl') document.body.classList.add('fs-xl');
+  localStorage.setItem('font_size_pref', size);
+  // 更新按鈕 active 狀態
+  document.querySelectorAll('.fs-buttons button').forEach(b=>{
+    b.classList.toggle('active', (b.dataset.fs||'')===size);
+  });
+  toast('字級已切換為 '+(size==='xl'?'特大':size==='l'?'大':'標準'),'success');
+}
+// 啟動時載入字級偏好
+(function initFontSize(){
+  const pref = localStorage.getItem('font_size_pref') || 'l'; // 預設「大」
+  if(pref==='l') document.body.classList.add('fs-l');
+  else if(pref==='xl') document.body.classList.add('fs-xl');
+  setTimeout(()=>{
+    document.querySelectorAll('.fs-buttons button').forEach(b=>{
+      b.classList.toggle('active', (b.dataset.fs||'')===pref);
+    });
+  }, 50);
+})();
 
 // ============ Toast 通知系統 ============
 function toast(msg, type){
